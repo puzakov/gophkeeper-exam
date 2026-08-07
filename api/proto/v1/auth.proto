@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package gophkeeper.v1;
+
+option go_package = "github.com/puzakov/gophkeeper-exam/internal/proto/v1;protov1";
+
+// AuthService handles user registration, authentication and token management.
+service AuthService {
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  rpc Login(LoginRequest) returns (AuthResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+message RegisterRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message LoginRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}
+
+message AuthResponse {
+  string user_id = 1;
+  string access_token = 2;   // JWT, 15 min
+  string refresh_token = 3;  // opaque, 30 days
+  int64  expires_in = 4;     // access token TTL in seconds
+  bytes  kek_salt = 5;       // Argon2id salt (16 bytes)
+  bytes  wrapped_dek = 6;    // DEK wrapped with KEK
+  string kek_params = 7;     // JSON: {"m":65536,"t":3,"p":4}
+}
