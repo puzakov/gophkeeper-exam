@@ -25,6 +25,9 @@ type RegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Login         string                 `protobuf:"bytes,1,opt,name=login,proto3" json:"login,omitempty"`
 	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	KekSalt       []byte                 `protobuf:"bytes,3,opt,name=kek_salt,json=kekSalt,proto3" json:"kek_salt,omitempty"`          // Argon2id salt (16 bytes)
+	WrappedDek    []byte                 `protobuf:"bytes,4,opt,name=wrapped_dek,json=wrappedDek,proto3" json:"wrapped_dek,omitempty"` // DEK wrapped with KEK
+	KekParams     string                 `protobuf:"bytes,5,opt,name=kek_params,json=kekParams,proto3" json:"kek_params,omitempty"`    // JSON: {"m":65536,"t":3,"p":4}
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -69,6 +72,27 @@ func (x *RegisterRequest) GetLogin() string {
 func (x *RegisterRequest) GetPassword() string {
 	if x != nil {
 		return x.Password
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetKekSalt() []byte {
+	if x != nil {
+		return x.KekSalt
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetWrappedDek() []byte {
+	if x != nil {
+		return x.WrappedDek
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetKekParams() string {
+	if x != nil {
+		return x.KekParams
 	}
 	return ""
 }
@@ -346,10 +370,15 @@ var File_auth_proto protoreflect.FileDescriptor
 const file_auth_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"auth.proto\x12\rgophkeeper.v1\"C\n" +
+	"auth.proto\x12\rgophkeeper.v1\"\x9e\x01\n" +
 	"\x0fRegisterRequest\x12\x14\n" +
 	"\x05login\x18\x01 \x01(\tR\x05login\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"@\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x19\n" +
+	"\bkek_salt\x18\x03 \x01(\fR\akekSalt\x12\x1f\n" +
+	"\vwrapped_dek\x18\x04 \x01(\fR\n" +
+	"wrappedDek\x12\x1d\n" +
+	"\n" +
+	"kek_params\x18\x05 \x01(\tR\tkekParams\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05login\x18\x01 \x01(\tR\x05login\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\":\n" +

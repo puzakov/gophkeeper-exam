@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,18 +86,14 @@ func UnwrapDEK(wrapped, kek []byte) ([]byte, error) {
 }
 
 // EncryptSecret encrypts plaintext using AES-256-GCM with the DEK.
-// AAD is derived from secretID and version to bind the ciphertext.
 // Returns nonce || ciphertext || tag.
-func EncryptSecret(plaintext, dek []byte, secretID string, version int64) ([]byte, error) {
-	aad := buildAAD(secretID, version)
-	return encrypt(plaintext, dek, aad)
+func EncryptSecret(plaintext, dek []byte) ([]byte, error) {
+	return encrypt(plaintext, dek, nil)
 }
 
 // DecryptSecret decrypts ciphertext using AES-256-GCM with the DEK.
-// AAD must match the secretID and version used during encryption.
-func DecryptSecret(ciphertext, dek []byte, secretID string, version int64) ([]byte, error) {
-	aad := buildAAD(secretID, version)
-	return decrypt(ciphertext, dek, aad)
+func DecryptSecret(ciphertext, dek []byte) ([]byte, error) {
+	return decrypt(ciphertext, dek, nil)
 }
 
 // EncryptMetadata encrypts metadata using AES-256-GCM with the DEK.
@@ -164,12 +159,4 @@ func decrypt(ciphertext, key, aad []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decrypt: %w", err)
 	}
 	return plaintext, nil
-}
-
-// buildAAD creates Additional Authenticated Data from secret ID and version.
-// This binds the ciphertext to a specific secret + version, preventing rollback.
-func buildAAD(secretID string, version int64) []byte {
-	data := fmt.Sprintf("%s:%d", secretID, version)
-	h := sha256.Sum256([]byte(data))
-	return h[:]
 }

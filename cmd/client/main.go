@@ -15,6 +15,9 @@ import (
 	"github.com/puzakov/gophkeeper-exam/internal/client"
 	"github.com/puzakov/gophkeeper-exam/internal/config"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
+	"github.com/puzakov/gophkeeper-exam/internal/tui"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 var (
@@ -31,9 +34,9 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "gophkeeper",
 		Short: "GophKeeper — secure password manager",
-		Long:  "A zero-knowledge password manager with gRPC backend. Store logins, passwords, text, binary data, and bank cards securely.",
+		Long:  "A zero-knowledge password manager with gRPC backend. Store logins, passwords, text, binary data, and bank cards securely.\n\nRun without a subcommand to launch the interactive TUI.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Name() == "version" {
+			if cmd.Name() == "version" || cmd.Name() == "gophkeeper" {
 				return nil
 			}
 			return connect()
@@ -43,6 +46,18 @@ func main() {
 				return goph.Close()
 			}
 			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Default: launch TUI.
+			if err := connect(); err != nil {
+				return err
+			}
+			defer goph.Close()
+
+			app := tui.NewApp(goph)
+			p := tea.NewProgram(app, tea.WithAltScreen())
+			_, err := p.Run()
+			return err
 		},
 	}
 
@@ -56,6 +71,7 @@ func main() {
 		cmdEdit(),
 		cmdRm(),
 		cmdSync(),
+		cmdTui(),
 		cmdVersion(),
 	)
 
@@ -295,11 +311,11 @@ func cmdList() *cobra.Command {
 }
 
 func cmdGet() *cobra.Command {
-	var id string
+	var id, output string
 
 	cmd := &cobra.Command{
 		Use:   "get",
-		Short: "Retrieve and decrypt a secret",
+		Short: "Retrieve and decrypt a secret. Use --output to save binary/text to a file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireAuth(); err != nil {
 				return err
@@ -312,6 +328,12 @@ func cmdGet() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// Save to file if --output is set.
+			if output != "" {
+				return savePayloadToFile(payload, output)
+			}
+
 			printPayload(payload)
 			if len(meta) > 0 {
 				fmt.Println("\nMetadata:")
@@ -323,16 +345,54 @@ func cmdGet() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&id, "id", "i", "", "secret ID (UUID)")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "save decrypted data to file")
 	_ = cmd.MarkFlagRequired("id")
 	return cmd
 }
 
+func savePayloadToFile(payload any, path string) error {
+	var data []byte
+	var displayName string
+
+	switch p := payload.(type) {
+	case *model.BinaryPayload:
+		data = p.Data
+		displayName = p.FileName
+	case *model.TextPayload:
+		data = []byte(p.Text)
+	case *model.LoginPasswordPayload:
+		return fmt.Errorf("login/password secrets cannot be saved to file; omit --output to view")
+	case *model.BankCardPayload:
+		return fmt.Errorf("bank card secrets cannot be saved to file; omit --output to view")
+	default:
+		return fmt.Errorf("unknown payload type")
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	if displayName != "" {
+		fmt.Printf("Saved %q (%d bytes) → %s\n", displayName, len(data), path)
+	} else {
+		fmt.Printf("Saved %d bytes → %s\n", len(data), path)
+	}
+	return nil
+}
+
 func printPayload(payload any) {
-	data, _ := model.EncodePayload(payload)
-	var pretty any
-	_ = json.Unmarshal(data, &pretty)
-	out, _ := json.MarshalIndent(pretty, "", "  ")
-	fmt.Println(string(out))
+	switch p := payload.(type) {
+	case *model.BinaryPayload:
+		fmt.Printf("File: %s  (%d bytes)\n", p.FileName, len(p.Data))
+		fmt.Println("Use -o/--output <path> to save to a file.")
+	case *model.TextPayload:
+		fmt.Println(p.Text)
+	default:
+		data, _ := model.EncodePayload(payload)
+		var pretty any
+		_ = json.Unmarshal(data, &pretty)
+		out, _ := json.MarshalIndent(pretty, "", "  ")
+		fmt.Println(string(out))
+	}
 }
 
 func cmdEdit() *cobra.Command {
@@ -433,6 +493,28 @@ func cmdSync() *cobra.Command {
 				return err
 			}
 			fmt.Printf("Sync complete: %d secrets updated/deleted.\n", len(secrets))
+			return nil
+		},
+	}
+}
+
+func cmdTui() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tui",
+		Short: "Launch the interactive terminal UI",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := connect(); err != nil {
+				return err
+			}
+			if goph != nil {
+				defer goph.Close()
+			}
+
+			app := tui.NewApp(goph)
+			p := tea.NewProgram(app, tea.WithAltScreen())
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("TUI error: %w", err)
+			}
 			return nil
 		},
 	}

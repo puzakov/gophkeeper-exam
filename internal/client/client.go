@@ -28,6 +28,7 @@ type GophKeeperClient struct {
 	SyncSvc protov1.SyncServiceClient
 
 	// Auth state.
+	login        string
 	accessToken  string
 	refreshToken string
 	userID       uuid.UUID
@@ -43,6 +44,14 @@ type SavedToken struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	UserID       string `json:"user_id"`
+	Login        string `json:"login"`
+	KEKSalt      []byte `json:"kek_salt"`
+	KEKParams    string `json:"kek_params"`
+}
+
+// HasKeyMaterial reports whether the DEK is available for crypto operations.
+func (c *GophKeeperClient) HasKeyMaterial() bool {
+	return len(c.dek) == 32
 }
 
 // Connect establishes a TLS-secured gRPC connection to the server.
@@ -101,10 +110,14 @@ func (c *GophKeeperClient) AuthContext() context.Context {
 
 // SaveTokens persists authentication tokens to disk.
 func (c *GophKeeperClient) SaveTokens() error {
+	paramsJSON, _ := crypto.MarshalKDFParams(c.kekParams)
 	st := SavedToken{
 		AccessToken:  c.accessToken,
 		RefreshToken: c.refreshToken,
 		UserID:       c.userID.String(),
+		Login:        c.login,
+		KEKSalt:      c.kekSalt,
+		KEKParams:    string(paramsJSON),
 	}
 	data, err := json.Marshal(st)
 	if err != nil {
@@ -123,10 +136,28 @@ func (c *GophKeeperClient) LoadTokens() error {
 	if err := json.Unmarshal(data, &st); err != nil {
 		return err
 	}
+	c.login = st.Login
 	c.accessToken = st.AccessToken
 	c.refreshToken = st.RefreshToken
 	c.userID, _ = uuid.Parse(st.UserID)
+	c.kekSalt = st.KEKSalt
+	if st.KEKParams != "" {
+		c.kekParams, _ = crypto.UnmarshalKDFParams([]byte(st.KEKParams))
+	}
 	return nil
+}
+
+// SavedLogin returns the login saved in the token file, if any.
+func (c *GophKeeperClient) SavedLogin() string {
+	data, err := os.ReadFile(c.cfg.TokenPath())
+	if err != nil {
+		return ""
+	}
+	var st SavedToken
+	if err := json.Unmarshal(data, &st); err != nil {
+		return ""
+	}
+	return st.Login
 }
 
 // ClearTokens removes the stored token file and resets state.
