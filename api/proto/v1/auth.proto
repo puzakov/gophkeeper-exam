@@ -15,6 +15,9 @@ service AuthService {
 message RegisterRequest {
   string login = 1;
   string password = 2;
+  bytes  kek_salt = 3;       // Argon2id salt (16 bytes)
+  bytes  wrapped_dek = 4;    // DEK wrapped with KEK
+  string kek_params = 5;     // JSON: {"m":65536,"t":3,"p":4}
 }
 
 message LoginRequest {

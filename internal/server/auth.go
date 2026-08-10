@@ -25,19 +25,13 @@ func NewAuthServer(auth *service.AuthService) *AuthServer {
 
 // Register handles user registration.
 func (s *AuthServer) Register(ctx context.Context, req *protov1.RegisterRequest) (*protov1.AuthResponse, error) {
-	// For initial registration, no key material is provided — server generates
-	// placeholder values. Real key material is set when the client first encrypts.
-	// In the zero-knowledge model, the client generates KEK salt + wrapped DEK
-	// during registration and sends them; here we accept empty values for
-	// the server-assigned case.
-
 	user, accessToken, refreshToken, err := s.auth.Register(
 		ctx,
 		req.GetLogin(),
 		req.GetPassword(),
-		nil, // kekSalt — client will update via key material endpoint
-		nil, // wrappedDEK
-		"",  // kekParams
+		req.GetKekSalt(),
+		req.GetWrappedDek(),
+		req.GetKekParams(),
 	)
 	if err != nil {
 		return nil, toGRPCError(err)

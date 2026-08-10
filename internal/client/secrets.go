@@ -23,7 +23,7 @@ func (c *GophKeeperClient) CreateSecret(st model.SecretType, payload any, meta m
 		return nil, fmt.Errorf("encode metadata: %w", err)
 	}
 
-	encData, err := crypto.EncryptSecret(plainData, c.dek, "new", 0)
+	encData, err := crypto.EncryptSecret(plainData, c.dek)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt data: %w", err)
 	}
@@ -99,7 +99,7 @@ func (c *GophKeeperClient) UpdateSecret(secretID uuid.UUID, expectedVersion int6
 		return 0, fmt.Errorf("encode metadata: %w", err)
 	}
 
-	encData, err := crypto.EncryptSecret(plainData, c.dek, secretID.String(), expectedVersion+1)
+	encData, err := crypto.EncryptSecret(plainData, c.dek)
 	if err != nil {
 		return 0, fmt.Errorf("encrypt data: %w", err)
 	}
@@ -138,7 +138,7 @@ func (c *GophKeeperClient) decryptProtoSecret(s *protov1.Secret) (*model.Secret,
 	id, _ := uuid.Parse(s.GetId())
 	st := model.SecretType(s.GetType())
 
-	plainData, err := crypto.DecryptSecret(s.GetEncryptedData(), c.dek, s.GetId(), s.GetVersion())
+	plainData, err := crypto.DecryptSecret(s.GetEncryptedData(), c.dek)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("decrypt data: %w", err)
 	}

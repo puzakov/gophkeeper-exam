@@ -29,19 +29,23 @@ func (c *GophKeeperClient) Register(ctx context.Context, login, masterPassword s
 		return fmt.Errorf("wrap DEK: %w", err)
 	}
 
-	// TODO: Send key material to server via RegisterRequest or a follow-up RPC.
-	// For now, key material is generated locally and stored only in memory.
-	_ = kekSalt
-	_ = wrappedDEK
+	paramsJSON, err := crypto.MarshalKDFParams(kekParams)
+	if err != nil {
+		return fmt.Errorf("marshal KDF params: %w", err)
+	}
 
 	resp, err := c.Auth.Register(ctx, &protov1.RegisterRequest{
-		Login:    login,
-		Password: masterPassword,
+		Login:      login,
+		Password:   masterPassword,
+		KekSalt:    kekSalt,
+		WrappedDek: wrappedDEK,
+		KekParams:  string(paramsJSON),
 	})
 	if err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
 
+	c.login = login
 	c.accessToken = resp.GetAccessToken()
 	c.refreshToken = resp.GetRefreshToken()
 	c.userID, _ = uuid.Parse(resp.GetUserId())
@@ -64,6 +68,7 @@ func (c *GophKeeperClient) Login(ctx context.Context, login, masterPassword stri
 		return fmt.Errorf("login: %w", err)
 	}
 
+	c.login = login
 	c.accessToken = resp.GetAccessToken()
 	c.refreshToken = resp.GetRefreshToken()
 	c.userID, _ = uuid.Parse(resp.GetUserId())
