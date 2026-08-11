@@ -131,7 +131,7 @@ func requireAuth() error {
 // Commands.
 
 func cmdRegister() *cobra.Command {
-	var login, password string
+	var login, password, confirm string
 
 	cmd := &cobra.Command{
 		Use:   "register",
@@ -139,6 +139,9 @@ func cmdRegister() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if login == "" || password == "" {
 				return fmt.Errorf("--login and --password are required")
+			}
+			if confirm != "" && password != confirm {
+				return fmt.Errorf("passwords do not match")
 			}
 			if err := goph.Register(ctx, login, password); err != nil {
 				return err
@@ -150,6 +153,7 @@ func cmdRegister() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&login, "login", "l", "", "login")
 	cmd.Flags().StringVarP(&password, "password", "p", "", "master password")
+	cmd.Flags().StringVarP(&confirm, "confirm", "c", "", "confirm password")
 	return cmd
 }
 
