@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/puzakov/gophkeeper-exam/internal/config"
@@ -55,15 +54,11 @@ func (c *GophKeeperClient) HasKeyMaterial() bool {
 }
 
 // Connect establishes a TLS-secured gRPC connection to the server.
+// The server certificate is always verified: against cfg.TLSCAFile when set,
+// otherwise against the shared dev CA (~/.gophkeeper/ca.pem), which is
+// generated on first use. Verification is never skipped.
 func Connect(cfg *config.ClientConfig) (*GophKeeperClient, error) {
-	var creds credentials.TransportCredentials
-	var err error
-
-	if cfg.TLSCAFile != "" {
-		creds, err = crypto.LoadOrGenerateClientCreds(cfg.TLSCAFile)
-	} else {
-		creds = crypto.MustLoadOrGenerateClientCreds()
-	}
+	creds, err := crypto.LoadOrGenerateClientCreds(cfg.TLSCAFile)
 	if err != nil {
 		return nil, fmt.Errorf("TLS creds: %w", err)
 	}
