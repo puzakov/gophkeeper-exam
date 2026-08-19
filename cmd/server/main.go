@@ -133,12 +133,29 @@ func run(cfg *config.ServerConfig) error {
 	case sig := <-quit:
 		logger.Log.Info("received signal, shutting down", zap.String("signal", sig.String()))
 
-		grpcSrv.GracefulStop()
+		// GracefulStop blocks until all RPCs finish, so run it in a goroutine
+		// and race it against the shutdown deadline.
+		stopped := make(chan struct{})
+		go func() {
+			grpcSrv.GracefulStop()
+			close(stopped)
+		}()
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		<-shutdownCtx.Done()
-		logger.Log.Info("server stopped")
+
+		select {
+		case <-stopped:
+			logger.Log.Info("server stopped gracefully")
+		case <-shutdownCtx.Done():
+			logger.Log.Warn("graceful shutdown timed out, forcing stop")
+			grpcSrv.Stop()
+			<-stopped
+		}
+
+		// Serve() returns nil after GracefulStop/Stop; drain it to avoid
+		// leaking the goroutine result.
+		<-errCh
 		return nil
 	}
 }

@@ -74,10 +74,16 @@ func (s *GRPCServer) Serve() error {
 	return s.server.Serve(s.listener)
 }
 
-// GracefulStop stops the gRPC server gracefully.
+// GracefulStop stops the gRPC server gracefully, waiting for in-flight RPCs.
 func (s *GRPCServer) GracefulStop() {
 	logger.Log.Info("gRPC server shutting down gracefully")
 	s.server.GracefulStop()
+}
+
+// Stop stops the gRPC server immediately, aborting in-flight RPCs.
+func (s *GRPCServer) Stop() {
+	logger.Log.Warn("gRPC server forced stop")
+	s.server.Stop()
 }
 
 // Addr returns the address the server is listening on.
