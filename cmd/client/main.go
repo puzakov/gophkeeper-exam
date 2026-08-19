@@ -15,6 +15,7 @@ import (
 	"github.com/puzakov/gophkeeper-exam/internal/client"
 	"github.com/puzakov/gophkeeper-exam/internal/config"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
+	"github.com/puzakov/gophkeeper-exam/internal/term"
 	"github.com/puzakov/gophkeeper-exam/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -131,17 +132,18 @@ func requireAuth() error {
 // Commands.
 
 func cmdRegister() *cobra.Command {
-	var login, password, confirm string
+	var login string
 
 	cmd := &cobra.Command{
 		Use:   "register",
 		Short: "Create a new account",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if login == "" || password == "" {
-				return fmt.Errorf("--login and --password are required")
+			if login == "" {
+				return fmt.Errorf("--login is required")
 			}
-			if confirm != "" && password != confirm {
-				return fmt.Errorf("passwords do not match")
+			password, err := term.ReadPasswordWithConfirm("Master password: ")
+			if err != nil {
+				return err
 			}
 			if err := goph.Register(ctx, login, password); err != nil {
 				return err
@@ -152,20 +154,22 @@ func cmdRegister() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&login, "login", "l", "", "login")
-	cmd.Flags().StringVarP(&password, "password", "p", "", "master password")
-	cmd.Flags().StringVarP(&confirm, "confirm", "c", "", "confirm password")
 	return cmd
 }
 
 func cmdLogin() *cobra.Command {
-	var login, password string
+	var login string
 
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Sign in to an existing account",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if login == "" || password == "" {
-				return fmt.Errorf("--login and --password are required")
+			if login == "" {
+				return fmt.Errorf("--login is required")
+			}
+			password, err := term.ReadPassword("Master password: ")
+			if err != nil {
+				return err
 			}
 			if err := goph.Login(ctx, login, password); err != nil {
 				return err
@@ -175,7 +179,6 @@ func cmdLogin() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&login, "login", "l", "", "login")
-	cmd.Flags().StringVarP(&password, "password", "p", "", "master password")
 	return cmd
 }
 
@@ -197,16 +200,16 @@ func cmdLogout() *cobra.Command {
 }
 
 func cmdAdd() *cobra.Command {
-	var typ, comment, login, password, text, file, cardNumber, cardExpiry, cardCVV, cardHolder string
+	var typ, comment, login, text, file, cardNumber, cardExpiry, cardHolder string
 
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new secret",
 		Long: `Add a new secret. Use --type to specify the kind:
-  login    — login/password pair
+  login    — login/password pair (password prompted securely)
   text     — arbitrary text
   binary   — file (path via --file)
-  card     — bank card`,
+  card     — bank card (CVV prompted securely)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireAuth(); err != nil {
 				return err
@@ -214,13 +217,21 @@ func cmdAdd() *cobra.Command {
 
 			switch typ {
 			case "login":
+				password, err := term.ReadPassword("Password: ")
+				if err != nil {
+					return err
+				}
 				return addLogin(login, password, comment)
 			case "text":
 				return addText(text, comment)
 			case "binary":
 				return addBinary(file, comment)
 			case "card":
-				return addCard(cardNumber, cardExpiry, cardCVV, cardHolder, comment)
+				cvv, err := term.ReadPassword("CVV: ")
+				if err != nil {
+					return err
+				}
+				return addCard(cardNumber, cardExpiry, cvv, cardHolder, comment)
 			default:
 				return fmt.Errorf("unknown type: %s (use login, text, binary, card)", typ)
 			}
@@ -229,12 +240,10 @@ func cmdAdd() *cobra.Command {
 	cmd.Flags().StringVarP(&typ, "type", "t", "", "secret type: login, text, binary, card")
 	cmd.Flags().StringVar(&comment, "comment", "", "plaintext comment/label")
 	cmd.Flags().StringVar(&login, "login", "", "login (for login type)")
-	cmd.Flags().StringVar(&password, "password", "", "password (for login type)")
 	cmd.Flags().StringVar(&text, "text", "", "text (for text type)")
 	cmd.Flags().StringVar(&file, "file", "", "file path (for binary type)")
 	cmd.Flags().StringVar(&cardNumber, "card-number", "", "card number")
 	cmd.Flags().StringVar(&cardExpiry, "card-expiry", "", "card expiry MM/YY")
-	cmd.Flags().StringVar(&cardCVV, "card-cvv", "", "card CVV")
 	cmd.Flags().StringVar(&cardHolder, "card-holder", "", "card holder name")
 	return cmd
 }
@@ -400,7 +409,7 @@ func printPayload(payload any) {
 }
 
 func cmdEdit() *cobra.Command {
-	var id, comment, login, password, text, cardNumber, cardExpiry, cardCVV, cardHolder string
+	var id, comment, login, text, cardNumber, cardExpiry, cardHolder string
 	var expectedVersion int64
 
 	cmd := &cobra.Command{
@@ -424,13 +433,21 @@ func cmdEdit() *cobra.Command {
 			var payload any
 			switch sec.Type {
 			case model.SecretTypeLoginPassword:
+				password, err := term.ReadPassword("New password: ")
+				if err != nil {
+					return err
+				}
 				payload = &model.LoginPasswordPayload{Login: login, Password: password}
 			case model.SecretTypeText:
 				payload = &model.TextPayload{Text: text}
 			case model.SecretTypeBankCard:
+				cvv, err := term.ReadPassword("New CVV: ")
+				if err != nil {
+					return err
+				}
 				payload = &model.BankCardPayload{
 					Number: cardNumber, Expiry: cardExpiry,
-					CVV: cardCVV, HolderName: cardHolder,
+					CVV: cvv, HolderName: cardHolder,
 				}
 			default:
 				return fmt.Errorf("editing type %s is not yet supported via CLI", sec.Type)
@@ -448,11 +465,9 @@ func cmdEdit() *cobra.Command {
 	cmd.Flags().Int64Var(&expectedVersion, "version", 0, "expected current version (optimistic locking)")
 	cmd.Flags().StringVar(&comment, "comment", "", "new comment")
 	cmd.Flags().StringVar(&login, "login", "", "new login")
-	cmd.Flags().StringVar(&password, "password", "", "new password")
 	cmd.Flags().StringVar(&text, "text", "", "new text")
 	cmd.Flags().StringVar(&cardNumber, "card-number", "", "new card number")
 	cmd.Flags().StringVar(&cardExpiry, "card-expiry", "", "new card expiry")
-	cmd.Flags().StringVar(&cardCVV, "card-cvv", "", "new card CVV")
 	cmd.Flags().StringVar(&cardHolder, "card-holder", "", "new card holder")
 	_ = cmd.MarkFlagRequired("id")
 	return cmd
