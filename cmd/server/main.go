@@ -123,9 +123,10 @@ func run(cfg *config.ServerConfig, log *zap.Logger) error {
 		return fmt.Errorf("gRPC server: %w", err)
 	}
 
-	// Graceful shutdown.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	// Graceful shutdown: the signal context is cancelled on SIGINT/SIGTERM/
+	// SIGQUIT and can be passed straight to child components.
+	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -135,8 +136,8 @@ func run(cfg *config.ServerConfig, log *zap.Logger) error {
 	select {
 	case err := <-errCh:
 		return err
-	case sig := <-quit:
-		log.Info("received signal, shutting down", zap.String("signal", sig.String()))
+	case <-sigCtx.Done():
+		log.Info("received signal, shutting down", zap.Error(sigCtx.Err()))
 
 		// GracefulStop blocks until all RPCs finish, so run it in a goroutine
 		// and race it against the shutdown deadline.
@@ -146,7 +147,7 @@ func run(cfg *config.ServerConfig, log *zap.Logger) error {
 			close(stopped)
 		}()
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(sigCtx, 30*time.Second)
 		defer cancel()
 
 		select {
