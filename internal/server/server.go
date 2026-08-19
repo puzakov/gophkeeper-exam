@@ -4,17 +4,16 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/puzakov/gophkeeper-exam/internal/config"
-	"github.com/puzakov/gophkeeper-exam/internal/crypto"
-	"github.com/puzakov/gophkeeper-exam/internal/logger"
-	"github.com/puzakov/gophkeeper-exam/internal/service"
-	"github.com/puzakov/gophkeeper-exam/internal/storage"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/puzakov/gophkeeper-exam/internal/config"
+	"github.com/puzakov/gophkeeper-exam/internal/crypto"
 	protov1 "github.com/puzakov/gophkeeper-exam/internal/proto/v1"
+	"github.com/puzakov/gophkeeper-exam/internal/service"
+	"github.com/puzakov/gophkeeper-exam/internal/storage"
 )
 
 // GRPCServer wraps the gRPC server instance and its listener.
@@ -22,10 +21,13 @@ type GRPCServer struct {
 	server   *grpc.Server
 	listener net.Listener
 	addr     string
+	log      *zap.Logger
 }
 
 // NewGRPCServer creates and configures the gRPC server with all services registered.
-func NewGRPCServer(cfg *config.ServerConfig, store *storage.PostgresStorage, authSvc *service.AuthService, secretSvc *service.SecretService, syncSvc *service.SyncService) (*GRPCServer, error) {
+// The logger is passed explicitly from main; child loggers for sub-components
+// are derived from it.
+func NewGRPCServer(cfg *config.ServerConfig, store *storage.PostgresStorage, authSvc *service.AuthService, secretSvc *service.SecretService, syncSvc *service.SyncService, log *zap.Logger) (*GRPCServer, error) {
 	lis, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
 		return nil, fmt.Errorf("gRPC listen on %s: %w", cfg.GRPCAddress, err)
@@ -48,7 +50,7 @@ func NewGRPCServer(cfg *config.ServerConfig, store *storage.PostgresStorage, aut
 	srv := grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.ChainUnaryInterceptor(
-			LoggingInterceptor(),
+			LoggingInterceptor(log.With(zap.String("component", "grpc-interceptor"))),
 			AuthInterceptor(validateToken),
 		),
 	)
@@ -65,24 +67,25 @@ func NewGRPCServer(cfg *config.ServerConfig, store *storage.PostgresStorage, aut
 		server:   srv,
 		listener: lis,
 		addr:     cfg.GRPCAddress,
+		log:      log,
 	}, nil
 }
 
 // Serve starts the gRPC server and blocks until it stops.
 func (s *GRPCServer) Serve() error {
-	logger.Log.Info("gRPC server started", zap.String("addr", s.addr))
+	s.log.Info("gRPC server started", zap.String("addr", s.addr))
 	return s.server.Serve(s.listener)
 }
 
 // GracefulStop stops the gRPC server gracefully, waiting for in-flight RPCs.
 func (s *GRPCServer) GracefulStop() {
-	logger.Log.Info("gRPC server shutting down gracefully")
+	s.log.Info("gRPC server shutting down gracefully")
 	s.server.GracefulStop()
 }
 
 // Stop stops the gRPC server immediately, aborting in-flight RPCs.
 func (s *GRPCServer) Stop() {
-	logger.Log.Warn("gRPC server forced stop")
+	s.log.Warn("gRPC server forced stop")
 	s.server.Stop()
 }
 

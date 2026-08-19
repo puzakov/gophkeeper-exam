@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestInitialize(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name    string
 		level   string
@@ -15,33 +15,38 @@ func TestInitialize(t *testing.T) {
 		{"info", "info", false},
 		{"debug", "debug", false},
 		{"error", "error", false},
+		{"empty defaults to info", "", false},
 		{"invalid", "invalid", true},
-		{"empty", "", false}, // empty defaults to "info"
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Initialize(tt.level)
+			log, err := New(tt.level)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Initialize(%q) error = %v, wantErr = %v", tt.level, err, tt.wantErr)
+				t.Fatalf("New(%q) error = %v, wantErr = %v", tt.level, err, tt.wantErr)
 			}
 			if err == nil {
-				if Log == nil {
-					t.Error("Log is nil after successful Initialize")
+				defer func() { _ = log.Sync() }()
+				if log == nil {
+					t.Fatal("log is nil after successful New")
 				}
-				// Verify logger works.
-				Log.Info("test message")
+				// Verify the logger works.
+				log.Info("test message")
 			}
 		})
 	}
 }
 
-func TestLogNop(t *testing.T) {
-	// Fresh default should not panic.
-	old := Log
-	Log = zap.NewNop()
-	defer func() { Log = old }()
+func TestNew_ChildLoggerWith(t *testing.T) {
+	root, err := New("info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Sync() }()
 
-	Log.Info("should not panic")
-	Log.Error("should not panic either")
+	child := root.With(zap.String("component", "test-component"))
+	if child == nil {
+		t.Fatal("child logger is nil")
+	}
+	child.Info("component-scoped message")
 }

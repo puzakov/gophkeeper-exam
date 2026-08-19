@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 
 	"github.com/puzakov/gophkeeper-exam/internal/build"
 	"github.com/puzakov/gophkeeper-exam/internal/config"
@@ -21,7 +22,6 @@ import (
 	"github.com/puzakov/gophkeeper-exam/internal/service"
 	"github.com/puzakov/gophkeeper-exam/internal/storage"
 	"github.com/puzakov/gophkeeper-exam/migrations"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -72,22 +72,27 @@ func main() {
 
 	cfg := config.MergeServerConfig(flags, fileCfg)
 
-	if err := logger.Initialize(cfg.LogLevel); err != nil {
+	// Build the root logger here and pass named children down explicitly.
+	log, err := logger.New(cfg.LogLevel)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = log.Sync() }()
 
 	if cfg.JWTSecret == "" {
-		logger.Log.Fatal("JWT secret is required (set via -jwt-secret or JWT_SECRET env)")
+		log.Fatal("JWT secret is required (set via -jwt-secret or JWT_SECRET env)")
 	}
 
-	if err := run(cfg); err != nil {
-		logger.Log.Fatal("server error", zap.Error(err))
+	if err := run(cfg, log); err != nil {
+		log.Fatal("server error", zap.Error(err))
 	}
 }
 
-func run(cfg *config.ServerConfig) error {
+func run(cfg *config.ServerConfig, log *zap.Logger) error {
 	ctx := context.Background()
+	dbLog := log.With(zap.String("component", "db"))
+	grpcLog := log.With(zap.String("component", "grpc-server"))
 
 	// Database.
 	conn, err := db.NewDatabaseConnection(ctx, cfg.DatabaseDSN)
@@ -102,7 +107,7 @@ func run(cfg *config.ServerConfig) error {
 	if err := migrations.Up(sqlDB); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
-	logger.Log.Info("database migrations applied")
+	dbLog.Info("database migrations applied")
 
 	// Storage.
 	store := storage.NewPostgresStorage(conn.Pool)
@@ -113,7 +118,7 @@ func run(cfg *config.ServerConfig) error {
 	syncSvc := service.NewSyncService(store.Secrets)
 
 	// gRPC server.
-	grpcSrv, err := server.NewGRPCServer(cfg, store, authSvc, secretSvc, syncSvc)
+	grpcSrv, err := server.NewGRPCServer(cfg, store, authSvc, secretSvc, syncSvc, grpcLog)
 	if err != nil {
 		return fmt.Errorf("gRPC server: %w", err)
 	}
@@ -131,7 +136,7 @@ func run(cfg *config.ServerConfig) error {
 	case err := <-errCh:
 		return err
 	case sig := <-quit:
-		logger.Log.Info("received signal, shutting down", zap.String("signal", sig.String()))
+		log.Info("received signal, shutting down", zap.String("signal", sig.String()))
 
 		// GracefulStop blocks until all RPCs finish, so run it in a goroutine
 		// and race it against the shutdown deadline.
@@ -146,9 +151,9 @@ func run(cfg *config.ServerConfig) error {
 
 		select {
 		case <-stopped:
-			logger.Log.Info("server stopped gracefully")
+			log.Info("server stopped gracefully")
 		case <-shutdownCtx.Done():
-			logger.Log.Warn("graceful shutdown timed out, forcing stop")
+			log.Warn("graceful shutdown timed out, forcing stop")
 			grpcSrv.Stop()
 			<-stopped
 		}

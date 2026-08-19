@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/puzakov/gophkeeper-exam/internal/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -66,15 +65,16 @@ func AuthInterceptor(validateToken func(string) (string, error)) grpc.UnaryServe
 	}
 }
 
-// LoggingInterceptor returns a UnaryServerInterceptor that logs each gRPC request.
-func LoggingInterceptor() grpc.UnaryServerInterceptor {
+// LoggingInterceptor returns a UnaryServerInterceptor that logs each gRPC request
+// using the provided logger.
+func LoggingInterceptor(log *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		start := time.Now()
 
 		resp, err := handler(ctx, req)
 
 		code := status.Code(err)
-		logger.Log.Info("gRPC request",
+		log.Info("gRPC request",
 			zap.String("method", info.FullMethod),
 			zap.String("code", code.String()),
 			zap.Duration("duration", time.Since(start)),
