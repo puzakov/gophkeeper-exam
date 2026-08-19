@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -113,7 +114,11 @@ func (s *SecretServer) UpdateSecret(ctx context.Context, req *protov1.UpdateSecr
 		req.GetComment(),
 	)
 	if err != nil {
-		if err.Error() == model.ErrConflict.Error() {
+		if errors.Is(err, model.ErrConflict) {
+			// Version mismatch (optimistic concurrency). Aborted is the
+			// canonical gRPC code for a precondition failure; AlreadyExists
+			// (used by toGRPCError for ErrConflict) means "entity already
+			// exists" and is semantically wrong here.
 			return nil, status.Error(codes.Aborted, "version conflict")
 		}
 		return nil, toGRPCError(err)
