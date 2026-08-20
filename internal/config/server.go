@@ -35,12 +35,13 @@ type ServerConfigFile struct {
 }
 
 // DefaultServerConfig returns a ServerConfig with safe defaults.
+// Credentials (JWTSecret, DatabaseDSN) have NO defaults
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
 		Address:     "localhost:8080",
 		GRPCAddress: "localhost:50051",
-		DatabaseDSN: "postgres://gophkeeper_db_user:secret@localhost:5434/gophkeeper_db_app?sslmode=disable",
-		JWTSecret:   "xxxxxxxxxx",
+		DatabaseDSN: "",
+		JWTSecret:   "",
 		LogLevel:    "info",
 	}
 }

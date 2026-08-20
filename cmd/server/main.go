@@ -41,8 +41,8 @@ func main() {
 	flag.StringVar(&address, "a", "localhost:8080", "HTTP server address")
 	flag.StringVar(&grpcAddress, "g", "localhost:50051", "gRPC server address")
 	flag.StringVar(&grpcAddress, "grpc", "localhost:50051", "gRPC server address")
-	flag.StringVar(&databaseDSN, "d", "postgres://gophkeeper_db_user:secret@localhost:5434/gophkeeper_db_app?sslmode=disable", "PostgreSQL DSN")
-	flag.StringVar(&jwtSecret, "jwt-secret", "", "JWT signing secret")
+	flag.StringVar(&databaseDSN, "d", "", "PostgreSQL DSN (required)")
+	flag.StringVar(&jwtSecret, "jwt-secret", "", "JWT signing secret (required)")
 	flag.StringVar(&tlsCert, "tls-cert", "", "TLS certificate path")
 	flag.StringVar(&tlsKey, "tls-key", "", "TLS key path")
 	flag.StringVar(&logLevel, "l", "info", "log level")
@@ -80,6 +80,9 @@ func main() {
 	}
 	defer func() { _ = log.Sync() }()
 
+	if cfg.DatabaseDSN == "" {
+		log.Fatal("Database DSN is required (set via -d flag or DATABASE_DSN env)")
+	}
 	if cfg.JWTSecret == "" {
 		log.Fatal("JWT secret is required (set via -jwt-secret or JWT_SECRET env)")
 	}

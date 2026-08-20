@@ -17,6 +17,12 @@ func TestDefaultServerConfig(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "info")
 	}
+	if cfg.JWTSecret != "" {
+		t.Errorf("JWTSecret must have NO default, got %q", cfg.JWTSecret)
+	}
+	if cfg.DatabaseDSN != "" {
+		t.Errorf("DatabaseDSN must have NO default, got %q", cfg.DatabaseDSN)
+	}
 }
 
 func TestDefaultClientConfig(t *testing.T) {
