@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -36,6 +37,20 @@ type GophKeeperClient struct {
 	dek       []byte // unwrapped DEK (in memory only)
 	kekSalt   []byte
 	kekParams crypto.KDFParams
+
+	// Offline support.
+	local       *LocalStore   // local SQLite cache
+	status      *OnlineStatus // connectivity tracker
+	closed      chan struct{} // closed when the client shuts down
+	monitorOnce sync.Once     // guards the connectivity monitor goroutine
+}
+
+// IsOnline reports whether the server was reachable at the last probe.
+func (c *GophKeeperClient) IsOnline() bool {
+	if c.status == nil {
+		return false
+	}
+	return c.status.IsOnline()
 }
 
 // SavedToken is persisted to disk between sessions.
@@ -70,18 +85,42 @@ func Connect(cfg *config.ClientConfig) (*GophKeeperClient, error) {
 		return nil, fmt.Errorf("dial %s: %w", cfg.ServerAddress, err)
 	}
 
+	// Open the local SQLite cache for offline reads.
+	local, err := OpenLocalStore(cfg.CachePath())
+	if err != nil {
+		cc.Close()
+		return nil, fmt.Errorf("open local store: %w", err)
+	}
+
 	return &GophKeeperClient{
 		cfg:     cfg,
 		cc:      cc,
 		Auth:    protov1.NewAuthServiceClient(cc),
 		Secrets: protov1.NewSecretServiceClient(cc),
 		SyncSvc: protov1.NewSyncServiceClient(cc),
+		local:   local,
+		status:  &OnlineStatus{},
+		closed:  make(chan struct{}),
 	}, nil
 }
 
-// Close shuts down the gRPC connection.
+// Close shuts down the gRPC connection and the local cache.
 func (c *GophKeeperClient) Close() error {
+	select {
+	case <-c.closed:
+		// Already closed.
+	default:
+		close(c.closed)
+	}
+	if c.local != nil {
+		_ = c.local.Close()
+	}
 	return c.cc.Close()
+}
+
+// LocalStore exposes the client's local cache for offline reads.
+func (c *GophKeeperClient) LocalStore() *LocalStore {
+	return c.local
 }
 
 // IsLoggedIn reports whether the client has valid tokens.

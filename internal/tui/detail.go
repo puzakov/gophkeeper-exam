@@ -95,10 +95,18 @@ func (m *DetailModel) Update(msg tea.Msg) (*DetailModel, tea.Cmd) {
 			m.msg = ""
 		case "e":
 			if m.secret != nil {
+				if m.goph != nil && !m.goph.IsOnline() {
+					m.err = "offline — read-only mode, cannot edit"
+					return m, nil
+				}
 				return m, NavigateToForm(m.secret)
 			}
 		case "d":
 			if m.secret != nil {
+				if m.goph != nil && !m.goph.IsOnline() {
+					m.err = "offline — read-only mode, cannot delete"
+					return m, nil
+				}
 				return m, m.deleteSecret()
 			}
 		case "x":

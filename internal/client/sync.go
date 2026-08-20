@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -39,7 +40,28 @@ func (c *GophKeeperClient) Sync(ctx context.Context, clientVersions map[string]i
 		ClientDeleted:  clientDeleted,
 	}).Build())
 	if err != nil {
+		c.status.setOnline(false)
 		return nil, fmt.Errorf("sync: %w", err)
+	}
+
+	c.status.setOnline(true)
+
+	// Refresh the local cache with server state (encrypted blobs only).
+	if c.local != nil {
+		var upserts []*model.Secret
+		for _, p := range resp.GetUpdatedSecrets() {
+			upserts = append(upserts, protoToModelSecret(p))
+		}
+		if len(upserts) > 0 {
+			_ = c.local.SaveSecrets(upserts)
+		}
+		for _, id := range resp.GetDeletedIds() {
+			if sec, err := c.local.LoadSecret(id); err == nil {
+				now := time.Now()
+				sec.DeletedAt = &now
+				_ = c.local.SaveSecret(sec)
+			}
+		}
 	}
 
 	return &SyncResult{

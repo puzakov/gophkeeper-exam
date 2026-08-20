@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -38,6 +40,8 @@ func NewApp(goph *client.GophKeeperClient) *AppModel {
 	// Only skip to list if we have both tokens AND DEK.
 	if goph.IsLoggedIn() && goph.HasKeyMaterial() {
 		m.current = ScreenList
+		// Start the background connectivity monitor for the online session.
+		goph.StartConnectivityMonitor(context.Background())
 	}
 
 	m.auth = NewAuthModel(goph)
@@ -81,6 +85,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Auth sub-model messages.
 	case authOKMsg:
+		// Session established (online or offline unlock) — start monitoring.
+		m.goph.StartConnectivityMonitor(context.Background())
 		return m, Navigate(ScreenList)
 	case authErrMsg:
 		m.auth.err = msg.err

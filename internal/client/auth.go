@@ -55,6 +55,18 @@ func (c *GophKeeperClient) Register(ctx context.Context, login, masterPassword s
 	c.kekSalt = kekSalt
 	c.kekParams = kekParams
 
+	// Persist key material locally so offline unlock works after restart.
+	if c.local != nil {
+		if err := c.local.SaveKeyMaterial(KeyMaterial{
+			Login:      login,
+			KEKSalt:    kekSalt,
+			WrappedDEK: wrappedDEK,
+			KEKParams:  string(paramsJSON),
+		}); err != nil {
+			return fmt.Errorf("save key material: %w", err)
+		}
+	}
+
 	return c.SaveTokens()
 }
 
@@ -87,9 +99,61 @@ func (c *GophKeeperClient) Login(ctx context.Context, login, masterPassword stri
 			}
 			c.dek = dek
 		}
+
+		// Persist key material locally so offline unlock works after restart.
+		if c.local != nil {
+			if err := c.local.SaveKeyMaterial(KeyMaterial{
+				Login:      login,
+				KEKSalt:    c.kekSalt,
+				WrappedDEK: resp.GetWrappedDek(),
+				KEKParams:  resp.GetKekParams(),
+			}); err != nil {
+				return fmt.Errorf("save key material: %w", err)
+			}
+		}
 	}
 
 	return c.SaveTokens()
+}
+
+// Unlock restores the DEK from locally stored key material using only the
+// master password — no server connection required. It is used for offline
+// read-only sessions. Returns model.ErrNotFound if no key material is stored.
+func (c *GophKeeperClient) Unlock(masterPassword string) error {
+	if c.local == nil {
+		return fmt.Errorf("local store is not available")
+	}
+
+	km, err := c.local.LoadKeyMaterial()
+	if err != nil {
+		return err // model.ErrNotFound when no material stored
+	}
+
+	kekParams, err := crypto.UnmarshalKDFParams([]byte(km.KEKParams))
+	if err != nil {
+		return fmt.Errorf("parse KDF params: %w", err)
+	}
+	kek := crypto.DeriveKey(masterPassword, km.KEKSalt, kekParams)
+
+	dek, err := crypto.UnwrapDEK(km.WrappedDEK, kek)
+	if err != nil {
+		return fmt.Errorf("unwrap DEK: wrong password? %w", err)
+	}
+
+	c.login = km.Login
+	c.dek = dek
+	c.kekSalt = km.KEKSalt
+	c.kekParams = kekParams
+	return nil
+}
+
+// CanUnlockOffline reports whether local key material is available for offline unlock.
+func (c *GophKeeperClient) CanUnlockOffline() bool {
+	if c.local == nil {
+		return false
+	}
+	_, err := c.local.LoadKeyMaterial()
+	return err == nil
 }
 
 // Logout revokes the refresh token and clears local state.
@@ -98,6 +162,9 @@ func (c *GophKeeperClient) Logout(ctx context.Context) error {
 		_, _ = c.Auth.Logout(ctx, (&protov1.LogoutRequest_builder{
 			RefreshToken: c.refreshToken,
 		}).Build())
+	}
+	if c.local != nil {
+		_ = c.local.Clear()
 	}
 	return c.ClearTokens()
 }

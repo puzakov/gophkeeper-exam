@@ -96,6 +96,11 @@ func (c *ClientConfig) TokenPath() string {
 	return filepath.Join(c.ConfigDir, "token.json")
 }
 
+// CachePath returns the path to the local SQLite cache inside the config directory.
+func (c *ClientConfig) CachePath() string {
+	return filepath.Join(c.ConfigDir, "cache.db")
+}
+
 // ConfigPath returns the path to the YAML config file inside the config directory.
 func (c *ClientConfig) ConfigPath() string {
 	return filepath.Join(c.ConfigDir, "config.yaml")

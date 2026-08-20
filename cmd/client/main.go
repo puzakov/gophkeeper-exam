@@ -115,6 +115,9 @@ func connect() error {
 
 	// Try loading saved tokens.
 	if loadErr := goph.LoadTokens(); loadErr == nil && goph.IsLoggedIn() {
+		// The monitor probes become active once the DEK is available
+		// (after login/unlock); until then probe() is a no-op.
+		goph.StartConnectivityMonitor(ctx)
 		return nil
 	}
 

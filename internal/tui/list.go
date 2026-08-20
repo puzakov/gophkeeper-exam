@@ -96,6 +96,10 @@ func (m *ListModel) Update(msg tea.Msg) (*ListModel, tea.Cmd) {
 			}
 
 		case "n":
+			if m.goph != nil && !m.goph.IsOnline() {
+				m.err = "offline — read-only mode, cannot create secrets"
+				return m, nil
+			}
 			return m, NavigateToForm(nil)
 
 		case "1":
@@ -145,7 +149,10 @@ func (m *ListModel) applyFilter() {
 func (m *ListModel) View() string {
 	var b strings.Builder
 
-	b.WriteString(SubtitleStyle.Render("Secrets"))
+	// Header with connectivity badge.
+	header := SubtitleStyle.Render("Secrets")
+	badge := m.statusBadge()
+	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, header, "  ", badge))
 	b.WriteString("\n")
 
 	// Filter tabs.
@@ -213,4 +220,15 @@ func (m *ListModel) View() string {
 	b.WriteString(DimStyle.Render("↑↓: navigate  •  enter: open  •  n: new  •  r: refresh  •  s: sync  •  q: quit"))
 
 	return b.String()
+}
+
+// statusBadge renders the connectivity indicator.
+func (m *ListModel) statusBadge() string {
+	if m.goph == nil {
+		return ""
+	}
+	if m.goph.IsOnline() {
+		return lipgloss.NewStyle().Foreground(success).Render("● ONLINE")
+	}
+	return lipgloss.NewStyle().Foreground(warning).Render("○ OFFLINE (read-only)")
 }

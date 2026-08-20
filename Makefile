@@ -58,7 +58,7 @@ test:
 COVER_PKGS := $(shell go list ./internal/... | grep -v /proto/ | tr '\n' ',')
 
 test-cover:
-	go test -race -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) ./...
+	go test -count=1 -race -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) ./...
 	go tool cover -func=coverage.out | tail -15
 	@echo ""
 	@echo -n "TOTAL: "

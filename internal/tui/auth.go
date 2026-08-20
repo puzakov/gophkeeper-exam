@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -182,8 +183,19 @@ func (m *AuthModel) submit() tea.Cmd {
 		switch m.mode {
 		case "register":
 			err = m.goph.Register(ctx, login, password)
-		case "login", "unlock":
+		case "login":
 			err = m.goph.Login(ctx, login, password)
+		case "unlock":
+			// Try the server first; fall back to offline unlock using
+			// locally stored key material when the server is unreachable.
+			err = m.goph.Login(ctx, login, password)
+			if err != nil && m.goph.CanUnlockOffline() {
+				if unlockErr := m.goph.Unlock(password); unlockErr == nil {
+					return authOKMsg{}
+				} else {
+					err = fmt.Errorf("offline unlock failed: %w", unlockErr)
+				}
+			}
 		}
 
 		if err != nil {

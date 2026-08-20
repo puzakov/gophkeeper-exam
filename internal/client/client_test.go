@@ -266,9 +266,10 @@ func (s *fakeServer) SyncSecrets(_ context.Context, req *protov1.SyncSecretsRequ
 // --- Harness ---
 
 type clientTestEnv struct {
-	client *GophKeeperClient
-	server *fakeServer
-	stop   func()
+	client     *GophKeeperClient
+	server     *fakeServer
+	stop       func()
+	stopServer func()
 }
 
 func setupClientEnv(t *testing.T) *clientTestEnv {
@@ -311,6 +312,10 @@ func setupClientEnv(t *testing.T) *clientTestEnv {
 		server: fake,
 		stop: func() {
 			_ = c.Close()
+			srv.Stop()
+			_ = lis.Close()
+		},
+		stopServer: func() {
 			srv.Stop()
 			_ = lis.Close()
 		},
@@ -600,4 +605,163 @@ func contains(haystack, needle []byte) bool {
 		}
 	}
 	return false
+}
+
+// --- Offline mode tests ---
+
+func TestClient_OfflineFallback_ListAndGet(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	if err := env.client.Register(context.Background(), "grace", "master-pass-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a secret while online — it lands in the local cache.
+	sec, err := env.client.CreateSecret(context.Background(), model.SecretTypeText,
+		&model.TextPayload{Text: "offline-readable"}, nil, "cached")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Server goes down.
+	env.stopServer()
+
+	// ListSecrets falls back to the cache.
+	summaries, err := env.client.ListSecrets(context.Background())
+	if err != nil {
+		t.Fatalf("ListSecrets() offline error = %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != sec.ID {
+		t.Errorf("offline ListSecrets() = %+v", summaries)
+	}
+	if env.client.IsOnline() {
+		t.Error("IsOnline() = true while server is down")
+	}
+
+	// GetSecret falls back to the cache and decrypts.
+	_, payload, _, err := env.client.GetSecret(context.Background(), sec.ID)
+	if err != nil {
+		t.Fatalf("GetSecret() offline error = %v", err)
+	}
+	text, ok := payload.(*model.TextPayload)
+	if !ok || text.Text != "offline-readable" {
+		t.Errorf("offline GetSecret() payload = %+v", payload)
+	}
+
+	// Mutations must fail when offline.
+	if _, err := env.client.CreateSecret(context.Background(), model.SecretTypeText,
+		&model.TextPayload{Text: "x"}, nil, "x"); err == nil {
+		t.Error("CreateSecret() succeeded while offline")
+	}
+}
+
+func TestClient_OfflineUnlock_AfterRestart(t *testing.T) {
+	env := setupClientEnv(t)
+
+	if err := env.client.Register(context.Background(), "heidi", "master-pass-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.client.CreateSecret(context.Background(), model.SecretTypeText,
+		&model.TextPayload{Text: "survives restart"}, nil, "cached"); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheDir := env.client.cfg.ConfigDir
+	env.stop() // closes client AND stops the server
+
+	// "Restart": new client, same config dir, server unreachable.
+	cfg := &config.ClientConfig{
+		ServerAddress: "127.0.0.1:1", // nothing listens here
+		ConfigDir:     cacheDir,
+	}
+	restarted, err := Connect(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+
+	// Unlock with the master password — no server involved.
+	if err := restarted.Unlock("master-pass-1"); err != nil {
+		t.Fatalf("Unlock() offline error = %v", err)
+	}
+	if !restarted.HasKeyMaterial() {
+		t.Error("Unlock() did not restore key material")
+	}
+
+	// Wrong password must fail.
+	bad, err := Connect(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Close()
+	if err := bad.Unlock("wrong-password"); err == nil {
+		t.Error("Unlock() with wrong password succeeded")
+	}
+
+	// Cached secret is readable after offline unlock.
+	summaries, err := restarted.ListSecrets(context.Background())
+	if err != nil {
+		t.Fatalf("offline ListSecrets() error = %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("offline ListSecrets() len = %d, want 1", len(summaries))
+	}
+	_, payload, _, err := restarted.GetSecret(context.Background(), summaries[0].ID)
+	if err != nil {
+		t.Fatalf("offline GetSecret() error = %v", err)
+	}
+	text, ok := payload.(*model.TextPayload)
+	if !ok || text.Text != "survives restart" {
+		t.Errorf("offline payload = %+v", payload)
+	}
+}
+
+func TestClient_Unlock_NoKeyMaterial(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	// Fresh client with empty cache cannot unlock offline.
+	if err := env.client.Unlock("any-password"); err == nil {
+		t.Error("Unlock() with empty local store succeeded")
+	}
+	if env.client.CanUnlockOffline() {
+		t.Error("CanUnlockOffline() = true with empty local store")
+	}
+}
+
+func TestClient_Monitor_UpdatesStatus(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	if err := env.client.Register(context.Background(), "ivan", "master-pass-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start monitor; the first probe runs immediately.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	env.client.StartConnectivityMonitor(ctx)
+
+	// Wait for the immediate probe to mark online.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if env.client.IsOnline() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !env.client.IsOnline() {
+		t.Error("IsOnline() = false after probe with running server")
+	}
+
+	// Stop the server and force a probe via a mutation attempt.
+	env.stopServer()
+	_, err := env.client.ListSecrets(context.Background())
+	if err != nil {
+		t.Fatalf("ListSecrets() error = %v", err)
+	}
+	if env.client.IsOnline() {
+		t.Error("IsOnline() = true after server stopped")
+	}
 }
