@@ -31,6 +31,10 @@ func (s *SecretServer) CreateSecret(ctx context.Context, req *protov1.CreateSecr
 		return nil, err
 	}
 
+	if err := checkSecretSize(req.GetEncryptedData()); err != nil {
+		return nil, err
+	}
+
 	secret, err := s.secrets.Create(ctx, userID,
 		protoToModelType(req.GetType()),
 		req.GetEncryptedData(),
@@ -107,6 +111,10 @@ func (s *SecretServer) UpdateSecret(ctx context.Context, req *protov1.UpdateSecr
 		return nil, status.Error(codes.InvalidArgument, "invalid secret id")
 	}
 
+	if err := checkSecretSize(req.GetEncryptedData()); err != nil {
+		return nil, err
+	}
+
 	newVersion, err := s.secrets.Update(ctx, userID, secretID,
 		req.GetExpectedVersion(),
 		req.GetEncryptedData(),
@@ -147,6 +155,17 @@ func (s *SecretServer) DeleteSecret(ctx context.Context, req *protov1.DeleteSecr
 }
 
 // Helpers.
+
+// checkSecretSize rejects encrypted payloads that exceed the server's
+// size limit with ResourceExhausted.
+func checkSecretSize(encryptedData []byte) error {
+	if int64(len(encryptedData)) > model.MaxEncryptedSecretSize {
+		return status.Errorf(codes.ResourceExhausted,
+			"secret size %d exceeds the %d byte limit",
+			len(encryptedData), model.MaxEncryptedSecretSize)
+	}
+	return nil
+}
 
 func parseUserID(ctx context.Context) (uuid.UUID, error) {
 	idStr, ok := UserIDFromContext(ctx)

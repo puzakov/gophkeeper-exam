@@ -272,6 +272,10 @@ func addText(text, comment string) error {
 }
 
 func addBinary(file, comment string) error {
+	// Fail fast on oversized files BEFORE reading them into memory.
+	if err := checkFileSize(file); err != nil {
+		return err
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -282,6 +286,19 @@ func addBinary(file, comment string) error {
 		return err
 	}
 	fmt.Printf("Secret created: %s (version %d)\n", sec.ID, sec.Version)
+	return nil
+}
+
+// checkFileSize rejects files larger than the binary secret limit.
+func checkFileSize(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+	if fi.Size() > model.MaxBinaryFileSize {
+		return fmt.Errorf("file %s is %d bytes — exceeds the %d byte limit for binary secrets",
+			path, fi.Size(), model.MaxBinaryFileSize)
+	}
 	return nil
 }
 

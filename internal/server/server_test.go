@@ -763,3 +763,70 @@ func TestLoadTLSCreds_Generated(t *testing.T) {
 		t.Error("loadTLSCreds() returned nil")
 	}
 }
+
+func TestServer_CreateSecret_TooLarge(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close()
+
+	env.register(t, "oversized", "password123")
+
+	// Tighten the limit so the test payload is small.
+	old := model.MaxEncryptedSecretSize
+	model.MaxEncryptedSecretSize = 100
+	t.Cleanup(func() { model.MaxEncryptedSecretSize = old })
+
+	_, err := env.secretClient.CreateSecret(env.authCtx(), (&protov1.CreateSecretRequest_builder{
+		Type:          protov1.SecretType_SECRET_TYPE_BINARY,
+		EncryptedData: make([]byte, 200),
+	}).Build())
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("CreateSecret() oversized code = %v, want ResourceExhausted", status.Code(err))
+	}
+}
+
+func TestServer_UpdateSecret_TooLarge(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close()
+
+	env.register(t, "oversized-upd", "password123")
+
+	createResp, err := env.secretClient.CreateSecret(env.authCtx(), (&protov1.CreateSecretRequest_builder{
+		Type:          protov1.SecretType_SECRET_TYPE_TEXT,
+		EncryptedData: []byte("small"),
+	}).Build())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	old := model.MaxEncryptedSecretSize
+	model.MaxEncryptedSecretSize = 100
+	t.Cleanup(func() { model.MaxEncryptedSecretSize = old })
+
+	_, err = env.secretClient.UpdateSecret(env.authCtx(), (&protov1.UpdateSecretRequest_builder{
+		Id:              createResp.GetId(),
+		ExpectedVersion: 1,
+		EncryptedData:   make([]byte, 200),
+	}).Build())
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Errorf("UpdateSecret() oversized code = %v, want ResourceExhausted", status.Code(err))
+	}
+}
+
+func TestServer_CreateSecret_UnderLimit_Succeeds(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close()
+
+	env.register(t, "fits", "password123")
+
+	old := model.MaxEncryptedSecretSize
+	model.MaxEncryptedSecretSize = 100
+	t.Cleanup(func() { model.MaxEncryptedSecretSize = old })
+
+	_, err := env.secretClient.CreateSecret(env.authCtx(), (&protov1.CreateSecretRequest_builder{
+		Type:          protov1.SecretType_SECRET_TYPE_BINARY,
+		EncryptedData: make([]byte, 90),
+	}).Build())
+	if err != nil {
+		t.Errorf("CreateSecret() under limit error = %v", err)
+	}
+}

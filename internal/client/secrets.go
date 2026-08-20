@@ -36,6 +36,12 @@ func (c *GophKeeperClient) CreateSecret(ctx context.Context, st model.SecretType
 		return nil, fmt.Errorf("encrypt metadata: %w", err)
 	}
 
+	// Defense in depth: refuse to send oversized payloads.
+	if int64(len(encData)) > model.MaxEncryptedSecretSize {
+		return nil, fmt.Errorf("secret is %d bytes — exceeds the %d byte limit",
+			len(encData), model.MaxEncryptedSecretSize)
+	}
+
 	resp, err := c.Secrets.CreateSecret(c.AuthContext(ctx), (&protov1.CreateSecretRequest_builder{
 		Type:              protov1.SecretType(st),
 		EncryptedData:     encData,

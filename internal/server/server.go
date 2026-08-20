@@ -11,6 +11,7 @@ import (
 
 	"github.com/puzakov/gophkeeper-exam/internal/config"
 	"github.com/puzakov/gophkeeper-exam/internal/crypto"
+	"github.com/puzakov/gophkeeper-exam/internal/model"
 	protov1 "github.com/puzakov/gophkeeper-exam/internal/proto/v1"
 	"github.com/puzakov/gophkeeper-exam/internal/service"
 	"github.com/puzakov/gophkeeper-exam/internal/storage"
@@ -49,6 +50,8 @@ func NewGRPCServer(cfg *config.ServerConfig, store *storage.PostgresStorage, aut
 
 	srv := grpc.NewServer(
 		grpc.Creds(creds),
+		grpc.MaxRecvMsgSize(model.GRPCMaxMsgSize),
+		grpc.MaxSendMsgSize(model.GRPCMaxMsgSize),
 		grpc.ChainUnaryInterceptor(
 			LoggingInterceptor(log.With(zap.String("component", "grpc-interceptor"))),
 			AuthInterceptor(validateToken),

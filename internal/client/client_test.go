@@ -765,3 +765,28 @@ func TestClient_Monitor_UpdatesStatus(t *testing.T) {
 		t.Error("IsOnline() = true after server stopped")
 	}
 }
+
+func TestClient_CreateSecret_RefusesOversizedPayload(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	if err := env.client.Register(context.Background(), "karen", "master-pass-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tighten the limit — any encrypted payload exceeds it.
+	old := model.MaxEncryptedSecretSize
+	model.MaxEncryptedSecretSize = 32
+	t.Cleanup(func() { model.MaxEncryptedSecretSize = old })
+
+	_, err := env.client.CreateSecret(context.Background(), model.SecretTypeText,
+		&model.TextPayload{Text: "hello world"}, nil, "c")
+	if err == nil {
+		t.Error("CreateSecret() with oversized encrypted payload succeeded")
+	}
+
+	// The server must NOT have received anything.
+	if len(env.server.secrets) != 0 {
+		t.Errorf("server stored %d secrets, want 0", len(env.server.secrets))
+	}
+}

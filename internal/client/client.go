@@ -15,6 +15,7 @@ import (
 
 	"github.com/puzakov/gophkeeper-exam/internal/config"
 	"github.com/puzakov/gophkeeper-exam/internal/crypto"
+	"github.com/puzakov/gophkeeper-exam/internal/model"
 	protov1 "github.com/puzakov/gophkeeper-exam/internal/proto/v1"
 )
 
@@ -80,6 +81,10 @@ func Connect(cfg *config.ClientConfig) (*GophKeeperClient, error) {
 
 	cc, err := grpc.NewClient(cfg.ServerAddress,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(model.GRPCMaxMsgSize),
+			grpc.MaxCallSendMsgSize(model.GRPCMaxMsgSize),
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", cfg.ServerAddress, err)

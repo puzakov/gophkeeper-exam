@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,12 @@ func (m *FormModel) submit() tea.Cmd {
 			payload = &model.TextPayload{Text: m.fieldVal("text")}
 		case "binary":
 			path := m.fieldVal("file")
+			// Fail fast on oversized files BEFORE reading into memory.
+			if fi, err := os.Stat(path); err == nil && fi.Size() > model.MaxBinaryFileSize {
+				return formErrMsg{err: fmt.Sprintf(
+					"file is %d bytes — exceeds the %d byte limit for binary secrets",
+					fi.Size(), model.MaxBinaryFileSize)}
+			}
 			data, err := os.ReadFile(path)
 			if err != nil {
 				return formErrMsg{err: "read file: " + err.Error()}
