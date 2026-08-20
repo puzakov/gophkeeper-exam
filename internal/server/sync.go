@@ -38,27 +38,31 @@ func (s *SyncServer) SyncSecrets(ctx context.Context, req *protov1.SyncSecretsRe
 		return nil, status.Error(codes.Internal, "sync failed")
 	}
 
-	resp := &protov1.SyncSecretsResponse{
-		DeletedIds: diff.DeletedIDs,
-	}
-
+	var updatedSecrets []*protov1.Secret
 	for _, sec := range diff.Updated {
-		resp.UpdatedSecrets = append(resp.UpdatedSecrets, modelToProto(&sec))
+		updatedSecrets = append(updatedSecrets, modelToProto(&sec))
 	}
 
+	var conflicts []*protov1.SyncVersion
 	for sid, ver := range diff.Conflicts {
-		resp.Conflicts = append(resp.Conflicts, &protov1.SyncVersion{
+		conflicts = append(conflicts, (&protov1.SyncVersion_builder{
 			SecretId: sid,
 			Version:  ver,
-		})
+		}).Build())
 	}
 
+	var serverVersions []*protov1.SyncVersion
 	for sid, ver := range diff.ServerVersions {
-		resp.ServerVersions = append(resp.ServerVersions, &protov1.SyncVersion{
+		serverVersions = append(serverVersions, (&protov1.SyncVersion_builder{
 			SecretId: sid,
 			Version:  ver,
-		})
+		}).Build())
 	}
 
-	return resp, nil
+	return (&protov1.SyncSecretsResponse_builder{
+		UpdatedSecrets: updatedSecrets,
+		DeletedIds:     diff.DeletedIDs,
+		Conflicts:      conflicts,
+		ServerVersions: serverVersions,
+	}).Build(), nil
 }

@@ -34,13 +34,13 @@ func (c *GophKeeperClient) Register(ctx context.Context, login, masterPassword s
 		return fmt.Errorf("marshal KDF params: %w", err)
 	}
 
-	resp, err := c.Auth.Register(ctx, &protov1.RegisterRequest{
+	resp, err := c.Auth.Register(ctx, (&protov1.RegisterRequest_builder{
 		Login:      login,
 		Password:   masterPassword,
 		KekSalt:    kekSalt,
 		WrappedDek: wrappedDEK,
 		KekParams:  string(paramsJSON),
-	})
+	}).Build())
 	if err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
@@ -60,10 +60,10 @@ func (c *GophKeeperClient) Register(ctx context.Context, login, masterPassword s
 
 // Login authenticates and derives the encryption keys from the master password.
 func (c *GophKeeperClient) Login(ctx context.Context, login, masterPassword string) error {
-	resp, err := c.Auth.Login(ctx, &protov1.LoginRequest{
+	resp, err := c.Auth.Login(ctx, (&protov1.LoginRequest_builder{
 		Login:    login,
 		Password: masterPassword,
-	})
+	}).Build())
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
@@ -95,9 +95,9 @@ func (c *GophKeeperClient) Login(ctx context.Context, login, masterPassword stri
 // Logout revokes the refresh token and clears local state.
 func (c *GophKeeperClient) Logout(ctx context.Context) error {
 	if c.refreshToken != "" {
-		_, _ = c.Auth.Logout(ctx, &protov1.LogoutRequest{
+		_, _ = c.Auth.Logout(ctx, (&protov1.LogoutRequest_builder{
 			RefreshToken: c.refreshToken,
-		})
+		}).Build())
 	}
 	return c.ClearTokens()
 }

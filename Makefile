@@ -18,6 +18,7 @@ proto:
 	protoc \
 		--go_out=. \
 		--go_opt=module=github.com/puzakov/gophkeeper-exam \
+		--go_opt=default_api_level=API_OPAQUE \
 		--go-grpc_out=. \
 		--go-grpc_opt=module=github.com/puzakov/gophkeeper-exam \
 		-I $(PROTO_DIR) \

@@ -41,10 +41,10 @@ func (s *SecretServer) CreateSecret(ctx context.Context, req *protov1.CreateSecr
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.CreateSecretResponse{
+	return (&protov1.CreateSecretResponse_builder{
 		Id:      secret.ID.String(),
 		Version: secret.Version,
-	}, nil
+	}).Build(), nil
 }
 
 // GetSecret returns a single secret.
@@ -64,9 +64,9 @@ func (s *SecretServer) GetSecret(ctx context.Context, req *protov1.GetSecretRequ
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.GetSecretResponse{
+	return (&protov1.GetSecretResponse_builder{
 		Secret: modelToProto(secret),
-	}, nil
+	}).Build(), nil
 }
 
 // ListSecrets returns metadata summaries for all secrets.
@@ -83,16 +83,16 @@ func (s *SecretServer) ListSecrets(ctx context.Context, _ *protov1.ListSecretsRe
 
 	out := make([]*protov1.SecretSummary, len(summaries))
 	for i, sm := range summaries {
-		out[i] = &protov1.SecretSummary{
+		out[i] = (&protov1.SecretSummary_builder{
 			Id:        sm.ID.String(),
 			Type:      modelToProtoType(sm.Type),
 			Comment:   sm.Comment,
 			Version:   sm.Version,
 			UpdatedAt: sm.UpdatedAt.Unix(),
-		}
+		}).Build()
 	}
 
-	return &protov1.ListSecretsResponse{Secrets: out}, nil
+	return (&protov1.ListSecretsResponse_builder{Secrets: out}).Build(), nil
 }
 
 // UpdateSecret replaces encrypted data with optimistic concurrency.
@@ -124,7 +124,7 @@ func (s *SecretServer) UpdateSecret(ctx context.Context, req *protov1.UpdateSecr
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.UpdateSecretResponse{Version: newVersion}, nil
+	return (&protov1.UpdateSecretResponse_builder{Version: newVersion}).Build(), nil
 }
 
 // DeleteSecret performs a soft delete.
@@ -143,7 +143,7 @@ func (s *SecretServer) DeleteSecret(ctx context.Context, req *protov1.DeleteSecr
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.DeleteSecretResponse{}, nil
+	return (&protov1.DeleteSecretResponse_builder{}).Build(), nil
 }
 
 // Helpers.
@@ -169,7 +169,7 @@ func modelToProtoType(t model.SecretType) protov1.SecretType {
 }
 
 func modelToProto(s *model.Secret) *protov1.Secret {
-	secret := &protov1.Secret{
+	secret := (&protov1.Secret_builder{
 		Id:                s.ID.String(),
 		Type:              modelToProtoType(s.Type),
 		EncryptedData:     s.EncryptedData,
@@ -178,6 +178,6 @@ func modelToProto(s *model.Secret) *protov1.Secret {
 		Version:           s.Version,
 		CreatedAt:         s.CreatedAt.Unix(),
 		UpdatedAt:         s.UpdatedAt.Unix(),
-	}
+	}).Build()
 	return secret
 }

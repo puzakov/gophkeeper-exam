@@ -34,12 +34,12 @@ func (c *GophKeeperClient) CreateSecret(ctx context.Context, st model.SecretType
 		return nil, fmt.Errorf("encrypt metadata: %w", err)
 	}
 
-	resp, err := c.Secrets.CreateSecret(c.AuthContext(ctx), &protov1.CreateSecretRequest{
+	resp, err := c.Secrets.CreateSecret(c.AuthContext(ctx), (&protov1.CreateSecretRequest_builder{
 		Type:              protov1.SecretType(st),
 		EncryptedData:     encData,
 		EncryptedMetadata: encMeta,
 		Comment:           comment,
-	})
+	}).Build())
 	if err != nil {
 		return nil, fmt.Errorf("create secret: %w", err)
 	}
@@ -55,9 +55,9 @@ func (c *GophKeeperClient) CreateSecret(ctx context.Context, st model.SecretType
 
 // GetSecret retrieves and decrypts a secret.
 func (c *GophKeeperClient) GetSecret(ctx context.Context, secretID uuid.UUID) (*model.Secret, any, model.Metadata, error) {
-	resp, err := c.Secrets.GetSecret(c.AuthContext(ctx), &protov1.GetSecretRequest{
+	resp, err := c.Secrets.GetSecret(c.AuthContext(ctx), (&protov1.GetSecretRequest_builder{
 		Id: secretID.String(),
-	})
+	}).Build())
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("get secret: %w", err)
 	}
@@ -68,7 +68,7 @@ func (c *GophKeeperClient) GetSecret(ctx context.Context, secretID uuid.UUID) (*
 
 // ListSecrets returns metadata summaries for all secrets.
 func (c *GophKeeperClient) ListSecrets(ctx context.Context) ([]model.SecretSummary, error) {
-	resp, err := c.Secrets.ListSecrets(c.AuthContext(ctx), &protov1.ListSecretsRequest{})
+	resp, err := c.Secrets.ListSecrets(c.AuthContext(ctx), (&protov1.ListSecretsRequest_builder{}).Build())
 	if err != nil {
 		return nil, fmt.Errorf("list secrets: %w", err)
 	}
@@ -109,13 +109,13 @@ func (c *GophKeeperClient) UpdateSecret(ctx context.Context, secretID uuid.UUID,
 		return 0, fmt.Errorf("encrypt metadata: %w", err)
 	}
 
-	resp, err := c.Secrets.UpdateSecret(c.AuthContext(ctx), &protov1.UpdateSecretRequest{
+	resp, err := c.Secrets.UpdateSecret(c.AuthContext(ctx), (&protov1.UpdateSecretRequest_builder{
 		Id:                secretID.String(),
 		ExpectedVersion:   expectedVersion,
 		EncryptedData:     encData,
 		EncryptedMetadata: encMeta,
 		Comment:           comment,
-	})
+	}).Build())
 	if err != nil {
 		return 0, fmt.Errorf("update secret: %w", err)
 	}
@@ -125,9 +125,9 @@ func (c *GophKeeperClient) UpdateSecret(ctx context.Context, secretID uuid.UUID,
 
 // DeleteSecret soft-deletes a secret on the server.
 func (c *GophKeeperClient) DeleteSecret(ctx context.Context, secretID uuid.UUID) error {
-	_, err := c.Secrets.DeleteSecret(c.AuthContext(ctx), &protov1.DeleteSecretRequest{
+	_, err := c.Secrets.DeleteSecret(c.AuthContext(ctx), (&protov1.DeleteSecretRequest_builder{
 		Id: secretID.String(),
-	})
+	}).Build())
 	if err != nil {
 		return fmt.Errorf("delete secret: %w", err)
 	}

@@ -37,12 +37,12 @@ func (s *AuthServer) Register(ctx context.Context, req *protov1.RegisterRequest)
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.AuthResponse{
+	return (&protov1.AuthResponse_builder{
 		UserId:       user.ID.String(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    900, // 15 minutes
-	}, nil
+	}).Build(), nil
 }
 
 // Login handles user authentication.
@@ -52,7 +52,7 @@ func (s *AuthServer) Login(ctx context.Context, req *protov1.LoginRequest) (*pro
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.AuthResponse{
+	return (&protov1.AuthResponse_builder{
 		UserId:       user.ID.String(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -60,7 +60,7 @@ func (s *AuthServer) Login(ctx context.Context, req *protov1.LoginRequest) (*pro
 		KekSalt:      user.KEKSalt,
 		WrappedDek:   user.WrappedDEK,
 		KekParams:    user.KEKParams,
-	}, nil
+	}).Build(), nil
 }
 
 // RefreshToken issues a new token pair from a valid refresh token.
@@ -70,12 +70,12 @@ func (s *AuthServer) RefreshToken(ctx context.Context, req *protov1.RefreshToken
 		return nil, toGRPCError(err)
 	}
 
-	return &protov1.AuthResponse{
+	return (&protov1.AuthResponse_builder{
 		UserId:       userID.String(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    900,
-	}, nil
+	}).Build(), nil
 }
 
 // Logout revokes the given refresh token.
@@ -83,7 +83,7 @@ func (s *AuthServer) Logout(ctx context.Context, req *protov1.LogoutRequest) (*p
 	if err := s.auth.Logout(ctx, req.GetRefreshToken()); err != nil {
 		return nil, toGRPCError(err)
 	}
-	return &protov1.LogoutResponse{}, nil
+	return (&protov1.LogoutResponse_builder{}).Build(), nil
 }
 
 // toGRPCError maps domain errors to gRPC status codes.

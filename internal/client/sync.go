@@ -28,16 +28,16 @@ type syncedSecret struct {
 func (c *GophKeeperClient) Sync(ctx context.Context, clientVersions map[string]int64, clientDeleted []string) (*SyncResult, error) {
 	var versions []*protov1.SyncVersion
 	for id, ver := range clientVersions {
-		versions = append(versions, &protov1.SyncVersion{
+		versions = append(versions, (&protov1.SyncVersion_builder{
 			SecretId: id,
 			Version:  ver,
-		})
+		}).Build())
 	}
 
-	resp, err := c.SyncSvc.SyncSecrets(c.AuthContext(ctx), &protov1.SyncSecretsRequest{
+	resp, err := c.SyncSvc.SyncSecrets(c.AuthContext(ctx), (&protov1.SyncSecretsRequest_builder{
 		ClientVersions: versions,
 		ClientDeleted:  clientDeleted,
-	})
+	}).Build())
 	if err != nil {
 		return nil, fmt.Errorf("sync: %w", err)
 	}
