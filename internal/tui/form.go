@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,7 +89,7 @@ func (m *FormModel) buildFields() {
 
 	// Pre-fill if editing.
 	if m.editSecret != nil && m.goph.IsLoggedIn() {
-		_, payload, _, err := m.goph.GetSecret(m.editSecret.ID)
+		_, payload, _, err := m.goph.GetSecret(context.Background(), m.editSecret.ID)
 		if err == nil {
 			m.comment.SetValue(m.editSecret.Comment)
 			switch p := payload.(type) {
@@ -231,9 +232,9 @@ func (m *FormModel) submit() tea.Cmd {
 
 		var err error
 		if m.editSecret != nil {
-			_, err = m.goph.UpdateSecret(m.editSecret.ID, m.editSecret.Version, payload, nil, comment)
+			_, err = m.goph.UpdateSecret(context.Background(), m.editSecret.ID, m.editSecret.Version, payload, nil, comment)
 		} else {
-			_, err = m.goph.CreateSecret(modelSecretType(m.secretType), payload, nil, comment)
+			_, err = m.goph.CreateSecret(context.Background(), modelSecretType(m.secretType), payload, nil, comment)
 		}
 
 		if err != nil {

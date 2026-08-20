@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ type syncedSecret struct {
 }
 
 // Sync pulls the latest state from the server and returns deltas.
-func (c *GophKeeperClient) Sync(clientVersions map[string]int64, clientDeleted []string) (*SyncResult, error) {
+func (c *GophKeeperClient) Sync(ctx context.Context, clientVersions map[string]int64, clientDeleted []string) (*SyncResult, error) {
 	var versions []*protov1.SyncVersion
 	for id, ver := range clientVersions {
 		versions = append(versions, &protov1.SyncVersion{
@@ -33,7 +34,7 @@ func (c *GophKeeperClient) Sync(clientVersions map[string]int64, clientDeleted [
 		})
 	}
 
-	resp, err := c.SyncSvc.SyncSecrets(c.AuthContext(), &protov1.SyncSecretsRequest{
+	resp, err := c.SyncSvc.SyncSecrets(c.AuthContext(ctx), &protov1.SyncSecretsRequest{
 		ClientVersions: versions,
 		ClientDeleted:  clientDeleted,
 	})
@@ -49,8 +50,8 @@ func (c *GophKeeperClient) Sync(clientVersions map[string]int64, clientDeleted [
 }
 
 // SyncAndDecrypt pulls updates and decrypts them.
-func (c *GophKeeperClient) SyncAndDecrypt(clientVersions map[string]int64, clientDeleted []string) ([]*syncedSecret, error) {
-	result, err := c.Sync(clientVersions, clientDeleted)
+func (c *GophKeeperClient) SyncAndDecrypt(ctx context.Context, clientVersions map[string]int64, clientDeleted []string) ([]*syncedSecret, error) {
+	result, err := c.Sync(ctx, clientVersions, clientDeleted)
 	if err != nil {
 		return nil, err
 	}

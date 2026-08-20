@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -61,7 +62,7 @@ type exportErrMsg struct{ err string }
 func (m *DetailModel) load() tea.Cmd {
 	return func() tea.Msg {
 		id, _ := uuid.Parse(m.secretID)
-		sec, payload, meta, err := m.goph.GetSecret(id)
+		sec, payload, meta, err := m.goph.GetSecret(context.Background(), id)
 		if err != nil {
 			return detailLoadedMsg{err: err.Error()}
 		}
@@ -112,7 +113,7 @@ func (m *DetailModel) Update(msg tea.Msg) (*DetailModel, tea.Cmd) {
 func (m *DetailModel) deleteSecret() tea.Cmd {
 	return func() tea.Msg {
 		id, _ := uuid.Parse(m.secretID)
-		if err := m.goph.DeleteSecret(id); err != nil {
+		if err := m.goph.DeleteSecret(context.Background(), id); err != nil {
 			return detailLoadedMsg{err: err.Error()}
 		}
 		return NavigateMsg{Screen: ScreenList}

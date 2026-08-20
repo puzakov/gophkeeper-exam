@@ -95,12 +95,12 @@ func (c *GophKeeperClient) UserID() uuid.UUID { return c.userID }
 // AccessToken returns the current access token.
 func (c *GophKeeperClient) AccessToken() string { return c.accessToken }
 
-// AuthContext returns a context with the Bearer token attached for authenticated RPCs.
-func (c *GophKeeperClient) AuthContext() context.Context {
+// AuthContext returns ctx with the Bearer token attached for authenticated RPCs.
+func (c *GophKeeperClient) AuthContext(ctx context.Context) context.Context {
 	md := metadata.New(map[string]string{
 		"authorization": "Bearer " + c.accessToken,
 	})
-	return metadata.NewOutgoingContext(context.Background(), md)
+	return metadata.NewOutgoingContext(ctx, md)
 }
 
 // SaveTokens persists authentication tokens to disk.

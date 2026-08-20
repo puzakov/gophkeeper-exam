@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -44,7 +45,7 @@ func (m *ListModel) Init() tea.Cmd {
 
 func (m *ListModel) loadSecrets() tea.Cmd {
 	return func() tea.Msg {
-		secrets, err := m.goph.ListSecrets()
+		secrets, err := m.goph.ListSecrets(context.Background())
 		if err != nil {
 			return listErrMsg{err: err.Error()}
 		}
@@ -120,7 +121,7 @@ func (m *ListModel) Update(msg tea.Msg) (*ListModel, tea.Cmd) {
 
 		case "s":
 			return m, func() tea.Msg {
-				_, err := m.goph.Sync(nil, nil)
+				_, err := m.goph.Sync(context.Background(), nil, nil)
 				if err != nil {
 					return listErrMsg{err: "sync: " + err.Error()}
 				}

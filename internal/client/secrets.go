@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // CreateSecret encrypts and stores a new secret.
-func (c *GophKeeperClient) CreateSecret(st model.SecretType, payload any, meta model.Metadata, comment string) (*model.Secret, error) {
+func (c *GophKeeperClient) CreateSecret(ctx context.Context, st model.SecretType, payload any, meta model.Metadata, comment string) (*model.Secret, error) {
 	plainData, err := model.EncodePayload(payload)
 	if err != nil {
 		return nil, fmt.Errorf("encode payload: %w", err)
@@ -33,7 +34,7 @@ func (c *GophKeeperClient) CreateSecret(st model.SecretType, payload any, meta m
 		return nil, fmt.Errorf("encrypt metadata: %w", err)
 	}
 
-	resp, err := c.Secrets.CreateSecret(c.AuthContext(), &protov1.CreateSecretRequest{
+	resp, err := c.Secrets.CreateSecret(c.AuthContext(ctx), &protov1.CreateSecretRequest{
 		Type:              protov1.SecretType(st),
 		EncryptedData:     encData,
 		EncryptedMetadata: encMeta,
@@ -53,8 +54,8 @@ func (c *GophKeeperClient) CreateSecret(st model.SecretType, payload any, meta m
 }
 
 // GetSecret retrieves and decrypts a secret.
-func (c *GophKeeperClient) GetSecret(secretID uuid.UUID) (*model.Secret, any, model.Metadata, error) {
-	resp, err := c.Secrets.GetSecret(c.AuthContext(), &protov1.GetSecretRequest{
+func (c *GophKeeperClient) GetSecret(ctx context.Context, secretID uuid.UUID) (*model.Secret, any, model.Metadata, error) {
+	resp, err := c.Secrets.GetSecret(c.AuthContext(ctx), &protov1.GetSecretRequest{
 		Id: secretID.String(),
 	})
 	if err != nil {
@@ -66,8 +67,8 @@ func (c *GophKeeperClient) GetSecret(secretID uuid.UUID) (*model.Secret, any, mo
 }
 
 // ListSecrets returns metadata summaries for all secrets.
-func (c *GophKeeperClient) ListSecrets() ([]model.SecretSummary, error) {
-	resp, err := c.Secrets.ListSecrets(c.AuthContext(), &protov1.ListSecretsRequest{})
+func (c *GophKeeperClient) ListSecrets(ctx context.Context) ([]model.SecretSummary, error) {
+	resp, err := c.Secrets.ListSecrets(c.AuthContext(ctx), &protov1.ListSecretsRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("list secrets: %w", err)
 	}
@@ -87,7 +88,7 @@ func (c *GophKeeperClient) ListSecrets() ([]model.SecretSummary, error) {
 }
 
 // UpdateSecret re-encrypts and updates a secret with optimistic concurrency.
-func (c *GophKeeperClient) UpdateSecret(secretID uuid.UUID, expectedVersion int64,
+func (c *GophKeeperClient) UpdateSecret(ctx context.Context, secretID uuid.UUID, expectedVersion int64,
 	payload any, meta model.Metadata, comment string) (int64, error) {
 
 	plainData, err := model.EncodePayload(payload)
@@ -108,7 +109,7 @@ func (c *GophKeeperClient) UpdateSecret(secretID uuid.UUID, expectedVersion int6
 		return 0, fmt.Errorf("encrypt metadata: %w", err)
 	}
 
-	resp, err := c.Secrets.UpdateSecret(c.AuthContext(), &protov1.UpdateSecretRequest{
+	resp, err := c.Secrets.UpdateSecret(c.AuthContext(ctx), &protov1.UpdateSecretRequest{
 		Id:                secretID.String(),
 		ExpectedVersion:   expectedVersion,
 		EncryptedData:     encData,
@@ -123,8 +124,8 @@ func (c *GophKeeperClient) UpdateSecret(secretID uuid.UUID, expectedVersion int6
 }
 
 // DeleteSecret soft-deletes a secret on the server.
-func (c *GophKeeperClient) DeleteSecret(secretID uuid.UUID) error {
-	_, err := c.Secrets.DeleteSecret(c.AuthContext(), &protov1.DeleteSecretRequest{
+func (c *GophKeeperClient) DeleteSecret(ctx context.Context, secretID uuid.UUID) error {
+	_, err := c.Secrets.DeleteSecret(c.AuthContext(ctx), &protov1.DeleteSecretRequest{
 		Id: secretID.String(),
 	})
 	if err != nil {

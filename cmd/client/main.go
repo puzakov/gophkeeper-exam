@@ -250,7 +250,7 @@ func cmdAdd() *cobra.Command {
 
 func addLogin(login, password, comment string) error {
 	p := &model.LoginPasswordPayload{Login: login, Password: password}
-	sec, err := goph.CreateSecret(model.SecretTypeLoginPassword, p, nil, comment)
+	sec, err := goph.CreateSecret(ctx, model.SecretTypeLoginPassword, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func addLogin(login, password, comment string) error {
 
 func addText(text, comment string) error {
 	p := &model.TextPayload{Text: text}
-	sec, err := goph.CreateSecret(model.SecretTypeText, p, nil, comment)
+	sec, err := goph.CreateSecret(ctx, model.SecretTypeText, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func addBinary(file, comment string) error {
 		return fmt.Errorf("read file: %w", err)
 	}
 	p := &model.BinaryPayload{Data: data, FileName: filepath.Base(file)}
-	sec, err := goph.CreateSecret(model.SecretTypeBinary, p, nil, comment)
+	sec, err := goph.CreateSecret(ctx, model.SecretTypeBinary, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func addCard(number, expiry, cvv, holder, comment string) error {
 		CVV:        cvv,
 		HolderName: holder,
 	}
-	sec, err := goph.CreateSecret(model.SecretTypeBankCard, p, nil, comment)
+	sec, err := goph.CreateSecret(ctx, model.SecretTypeBankCard, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func cmdList() *cobra.Command {
 			if err := requireAuth(); err != nil {
 				return err
 			}
-			secrets, err := goph.ListSecrets()
+			secrets, err := goph.ListSecrets(ctx)
 			if err != nil {
 				return err
 			}
@@ -337,7 +337,7 @@ func cmdGet() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid UUID: %w", err)
 			}
-			_, payload, meta, err := goph.GetSecret(uid)
+			_, payload, meta, err := goph.GetSecret(ctx, uid)
 			if err != nil {
 				return err
 			}
@@ -425,7 +425,7 @@ func cmdEdit() *cobra.Command {
 			}
 
 			// Get existing to determine type.
-			sec, _, _, err := goph.GetSecret(uid)
+			sec, _, _, err := goph.GetSecret(ctx, uid)
 			if err != nil {
 				return err
 			}
@@ -453,7 +453,7 @@ func cmdEdit() *cobra.Command {
 				return fmt.Errorf("editing type %s is not yet supported via CLI", sec.Type)
 			}
 
-			newVersion, err := goph.UpdateSecret(uid, expectedVersion, payload, nil, comment)
+			newVersion, err := goph.UpdateSecret(ctx, uid, expectedVersion, payload, nil, comment)
 			if err != nil {
 				return err
 			}
@@ -487,7 +487,7 @@ func cmdRm() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid UUID: %w", err)
 			}
-			if err := goph.DeleteSecret(uid); err != nil {
+			if err := goph.DeleteSecret(ctx, uid); err != nil {
 				return err
 			}
 			fmt.Printf("Secret %s deleted.\n", uid)
@@ -507,7 +507,7 @@ func cmdSync() *cobra.Command {
 			if err := requireAuth(); err != nil {
 				return err
 			}
-			secrets, err := goph.SyncAndDecrypt(nil, nil)
+			secrets, err := goph.SyncAndDecrypt(ctx, nil, nil)
 			if err != nil {
 				return err
 			}
