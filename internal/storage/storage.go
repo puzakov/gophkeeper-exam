@@ -6,9 +6,19 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
 )
+
+// DBPool is the minimal pgx pool interface used by repositories.
+// It is satisfied by *pgxpool.Pool in production and by pgxmock pools in tests.
+type DBPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 // UserRepository persists user accounts.
 type UserRepository interface {

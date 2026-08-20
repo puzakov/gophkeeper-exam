@@ -210,8 +210,13 @@ func (m *AuthModel) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Login field (hidden in unlock mode).
-	if m.mode != "unlock" {
+	// Login field (editable input, or read-only account label in unlock mode).
+	if m.mode == "unlock" {
+		b.WriteString(LabelStyle.Render("Account:"))
+		b.WriteString("\n  ")
+		b.WriteString(m.login.Value())
+		b.WriteString("\n\n")
+	} else {
 		b.WriteString(LabelStyle.Render("Login:"))
 		b.WriteString("\n")
 		b.WriteString(m.login.View())

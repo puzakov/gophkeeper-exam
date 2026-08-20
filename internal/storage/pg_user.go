@@ -6,12 +6,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
 )
 
 type pgUserRepo struct {
-	pool *pgxpool.Pool
+	pool DBPool
 }
 
 func (r *pgUserRepo) Create(ctx context.Context, u *model.User) error {

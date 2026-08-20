@@ -7,12 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
 )
 
 type pgSecretRepo struct {
-	pool *pgxpool.Pool
+	pool DBPool
 }
 
 func (r *pgSecretRepo) Create(ctx context.Context, s *model.Secret) error {

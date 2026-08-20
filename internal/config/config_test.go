@@ -149,3 +149,134 @@ func TestClientConfig_EnsureConfigDir(t *testing.T) {
 		t.Error("config dir is not a directory")
 	}
 }
+
+func TestMergeServerConfig_EnvOverridesFlags(t *testing.T) {
+	t.Setenv("ADDRESS", "env-addr:9090")
+	t.Setenv("GRPC_ADDRESS", "env-grpc:50052")
+	t.Setenv("DATABASE_DSN", "postgres://env")
+	t.Setenv("JWT_SECRET", "env-secret")
+	t.Setenv("TLS_CERT", "/env/cert.pem")
+	t.Setenv("TLS_KEY", "/env/key.pem")
+	t.Setenv("LOG_LEVEL", "debug")
+
+	flags := &ServerConfig{
+		Address:     "flag-addr:8080",
+		GRPCAddress: "flag-grpc:50051",
+		DatabaseDSN: "postgres://flag",
+		JWTSecret:   "flag-secret",
+		TLSCert:     "/flag/cert.pem",
+		TLSKey:      "/flag/key.pem",
+		LogLevel:    "info",
+	}
+
+	cfg := MergeServerConfig(flags, nil)
+
+	checks := map[string]struct{ got, want string }{
+		"Address":     {cfg.Address, "env-addr:9090"},
+		"GRPCAddress": {cfg.GRPCAddress, "env-grpc:50052"},
+		"DatabaseDSN": {cfg.DatabaseDSN, "postgres://env"},
+		"JWTSecret":   {cfg.JWTSecret, "env-secret"},
+		"TLSCert":     {cfg.TLSCert, "/env/cert.pem"},
+		"TLSKey":      {cfg.TLSKey, "/env/key.pem"},
+		"LogLevel":    {cfg.LogLevel, "debug"},
+	}
+	for name, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q (env must override flags)", name, c.got, c.want)
+		}
+	}
+}
+
+func TestMergeServerConfig_FileThenFlagsThenEnv(t *testing.T) {
+	t.Setenv("ADDRESS", "env-addr:9090")
+
+	fileCfg := &ServerConfigFile{Address: "file-addr:7070", GRPCAddress: "file-grpc:7000"}
+	flags := &ServerConfig{Address: "flag-addr:8080"}
+
+	cfg := MergeServerConfig(flags, fileCfg)
+
+	// Env > flags > file.
+	if cfg.Address != "env-addr:9090" {
+		t.Errorf("Address = %q, want env-addr:9090", cfg.Address)
+	}
+	// GRPCAddress: no env, no flag → from file.
+	if cfg.GRPCAddress != "file-grpc:7000" {
+		t.Errorf("GRPCAddress = %q, want file-grpc:7000", cfg.GRPCAddress)
+	}
+	// JWTSecret: nothing anywhere → no default.
+	if cfg.JWTSecret != "" {
+		t.Errorf("JWTSecret = %q, want empty", cfg.JWTSecret)
+	}
+}
+
+func TestMergeClientConfig_EnvOverridesFlags(t *testing.T) {
+	t.Setenv("GOPHKEEPER_SERVER_ADDRESS", "env:50051")
+	t.Setenv("GOPHKEEPER_TLS_CA_FILE", "/env/ca.pem")
+	t.Setenv("GOPHKEEPER_CONFIG_DIR", "/env/config")
+
+	flags := &ClientConfig{
+		ServerAddress: "flag:50051",
+		TLSCAFile:     "/flag/ca.pem",
+		ConfigDir:     "/flag/config",
+	}
+
+	cfg := MergeClientConfig(flags, nil)
+
+	if cfg.ServerAddress != "env:50051" {
+		t.Errorf("ServerAddress = %q, want env:50051", cfg.ServerAddress)
+	}
+	if cfg.TLSCAFile != "/env/ca.pem" {
+		t.Errorf("TLSCAFile = %q, want /env/ca.pem", cfg.TLSCAFile)
+	}
+	if cfg.ConfigDir != "/env/config" {
+		t.Errorf("ConfigDir = %q, want /env/config", cfg.ConfigDir)
+	}
+}
+
+func TestMergeClientConfig_FileThenFlags(t *testing.T) {
+	fileCfg := &ClientConfig{ServerAddress: "file:50051"}
+	flags := &ClientConfig{ServerAddress: "flag:50051", TLSCAFile: "/flag/ca.pem"}
+
+	cfg := MergeClientConfig(flags, fileCfg)
+
+	if cfg.ServerAddress != "flag:50051" {
+		t.Errorf("ServerAddress = %q, want flag:50051", cfg.ServerAddress)
+	}
+	if cfg.TLSCAFile != "/flag/ca.pem" {
+		t.Errorf("TLSCAFile = %q, want /flag/ca.pem", cfg.TLSCAFile)
+	}
+}
+
+func TestLoadClientConfigFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "client.yaml")
+	yamlContent := "server_address: \"remote:50051\"\ntls_ca_file: \"/ca.pem\"\n"
+	if err := os.WriteFile(path, []byte(yamlContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadClientConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadClientConfigFile() error = %v", err)
+	}
+	if cfg.ServerAddress != "remote:50051" || cfg.TLSCAFile != "/ca.pem" {
+		t.Errorf("LoadClientConfigFile() = %+v", cfg)
+	}
+}
+
+func TestLoadClientConfigFile_NotFound(t *testing.T) {
+	_, err := LoadClientConfigFile("/nonexistent.yaml")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadClientConfigFile_InvalidYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(path, []byte("not: [valid: yaml"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadClientConfigFile(path)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}

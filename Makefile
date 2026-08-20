@@ -54,11 +54,15 @@ build-all:
 test:
 	go test -v -race ./...
 
+# generated proto code (internal/proto/v1) is excluded.
+COVER_PKGS := $(shell go list ./internal/... | grep -v /proto/ | tr '\n' ',')
+
 test-cover:
-	go test -v -race -coverprofile=coverage.out ./...
-	go tool cover -func=coverage.out
+	go test -race -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) ./...
+	go tool cover -func=coverage.out | tail -15
 	@echo ""
-	@go tool cover -func=coverage.out | tail -1
+	@echo -n "TOTAL: "
+	@go tool cover -func=coverage.out | tail -1 | awk '{print $$3}'
 
 bench:
 	go test -bench=. -benchmem ./...

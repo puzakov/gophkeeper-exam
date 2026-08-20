@@ -27,12 +27,15 @@ func UserIDFromContext(ctx context.Context) (string, bool) {
 }
 
 // AuthInterceptor returns a UnaryServerInterceptor that validates JWT access tokens.
-// Public methods (Register, Login) are allowed without a token.
+// Credential-based methods (Register, Login, RefreshToken, Logout) are
+// allowed without an access token — they authenticate via password or
+// refresh token instead.
 func AuthInterceptor(validateToken func(string) (string, error)) grpc.UnaryServerInterceptor {
 	publicMethods := map[string]bool{
 		"/gophkeeper.v1.AuthService/Register":     true,
 		"/gophkeeper.v1.AuthService/Login":        true,
 		"/gophkeeper.v1.AuthService/RefreshToken": true,
+		"/gophkeeper.v1.AuthService/Logout":       true,
 	}
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {

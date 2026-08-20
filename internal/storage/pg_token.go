@@ -7,12 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
 )
 
 type pgTokenRepo struct {
-	pool *pgxpool.Pool
+	pool DBPool
 }
 
 func (r *pgTokenRepo) Create(ctx context.Context, t *model.RefreshToken) error {
