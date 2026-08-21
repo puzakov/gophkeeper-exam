@@ -11,27 +11,39 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/puzakov/gophkeeper-exam/internal/build"
 	"github.com/puzakov/gophkeeper-exam/internal/client"
 	"github.com/puzakov/gophkeeper-exam/internal/config"
 	"github.com/puzakov/gophkeeper-exam/internal/model"
 	"github.com/puzakov/gophkeeper-exam/internal/term"
 	"github.com/puzakov/gophkeeper-exam/internal/tui"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
-var (
+// App encapsulates the CLI application state. All dependencies are passed
+// explicitly through it instead of package-level globals.
+type App struct {
 	cfg  *config.ClientConfig
 	goph *client.GophKeeperClient
-	ctx  = context.Background()
-)
+	ctx  context.Context
+}
 
 func main() {
 	build.PrintInfo()
 
-	cfg = loadConfig()
+	app := &App{ctx: context.Background()}
+	app.cfg = app.loadConfig()
 
+	rootCmd := app.rootCommand()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// rootCommand builds the root cobra command with all subcommands.
+func (a *App) rootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "gophkeeper",
 		Short: "GophKeeper — secure password manager",
@@ -40,22 +52,22 @@ func main() {
 			if cmd.Name() == "version" || cmd.Name() == "gophkeeper" {
 				return nil
 			}
-			return connect()
+			return a.connect()
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			if goph != nil {
-				return goph.Close()
+			if a.goph != nil {
+				return a.goph.Close()
 			}
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Default: launch TUI.
-			if err := connect(); err != nil {
+			if err := a.connect(); err != nil {
 				return err
 			}
-			defer goph.Close()
+			defer a.goph.Close()
 
-			app := tui.NewApp(goph)
+			app := tui.NewApp(a.goph)
 			p := tea.NewProgram(app, tea.WithAltScreen())
 			_, err := p.Run()
 			return err
@@ -63,34 +75,31 @@ func main() {
 	}
 
 	rootCmd.AddCommand(
-		cmdRegister(),
-		cmdLogin(),
-		cmdLogout(),
-		cmdAdd(),
-		cmdList(),
-		cmdGet(),
-		cmdEdit(),
-		cmdRm(),
-		cmdSync(),
-		cmdTui(),
-		cmdVersion(),
+		a.cmdRegister(),
+		a.cmdLogin(),
+		a.cmdLogout(),
+		a.cmdAdd(),
+		a.cmdList(),
+		a.cmdGet(),
+		a.cmdEdit(),
+		a.cmdRm(),
+		a.cmdSync(),
+		a.cmdTui(),
+		a.cmdVersion(),
 	)
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
-func loadConfig() *config.ClientConfig {
-	cfg := config.DefaultClientConfig()
+func (a *App) loadConfig() *config.ClientConfig {
+	defaults := config.DefaultClientConfig()
 
 	var serverAddr, caFile, configDir string
 
 	root := &cobra.Command{}
-	root.Flags().StringVarP(&serverAddr, "server", "s", cfg.ServerAddress, "gRPC server address")
+	root.Flags().StringVarP(&serverAddr, "server", "s", defaults.ServerAddress, "gRPC server address")
 	root.Flags().StringVar(&caFile, "ca", "", "TLS CA certificate file")
-	root.Flags().StringVar(&configDir, "config-dir", cfg.ConfigDir, "config directory")
+	root.Flags().StringVar(&configDir, "config-dir", defaults.ConfigDir, "config directory")
 	_ = root.ParseFlags(os.Args[1:])
 
 	flags := &config.ClientConfig{
@@ -102,22 +111,22 @@ func loadConfig() *config.ClientConfig {
 	return config.MergeClientConfig(flags, nil)
 }
 
-func connect() error {
-	if err := cfg.EnsureConfigDir(); err != nil {
+func (a *App) connect() error {
+	if err := a.cfg.EnsureConfigDir(); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
 	var err error
-	goph, err = client.Connect(cfg)
+	a.goph, err = client.Connect(a.cfg)
 	if err != nil {
 		return fmt.Errorf("connect to server: %w", err)
 	}
 
 	// Try loading saved tokens.
-	if loadErr := goph.LoadTokens(); loadErr == nil && goph.IsLoggedIn() {
+	if loadErr := a.goph.LoadTokens(); loadErr == nil && a.goph.IsLoggedIn() {
 		// The monitor probes become active once the DEK is available
 		// (after login/unlock); until then probe() is a no-op.
-		goph.StartConnectivityMonitor(ctx)
+		a.goph.StartConnectivityMonitor(a.ctx)
 		return nil
 	}
 
@@ -125,8 +134,8 @@ func connect() error {
 	return nil
 }
 
-func requireAuth() error {
-	if goph == nil || !goph.IsLoggedIn() {
+func (a *App) requireAuth() error {
+	if a.goph == nil || !a.goph.IsLoggedIn() {
 		return fmt.Errorf("not logged in. Run 'gophkeeper login' or 'gophkeeper register' first")
 	}
 	return nil
@@ -134,7 +143,7 @@ func requireAuth() error {
 
 // Commands.
 
-func cmdRegister() *cobra.Command {
+func (a *App) cmdRegister() *cobra.Command {
 	var login string
 
 	cmd := &cobra.Command{
@@ -148,11 +157,11 @@ func cmdRegister() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := goph.Register(ctx, login, password); err != nil {
+			if err := a.goph.Register(a.ctx, login, password); err != nil {
 				return err
 			}
 			fmt.Println("Registered and logged in successfully.")
-			fmt.Printf("User ID: %s\n", goph.UserID())
+			fmt.Printf("User ID: %s\n", a.goph.UserID())
 			return nil
 		},
 	}
@@ -160,7 +169,7 @@ func cmdRegister() *cobra.Command {
 	return cmd
 }
 
-func cmdLogin() *cobra.Command {
+func (a *App) cmdLogin() *cobra.Command {
 	var login string
 
 	cmd := &cobra.Command{
@@ -174,7 +183,7 @@ func cmdLogin() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := goph.Login(ctx, login, password); err != nil {
+			if err := a.goph.Login(a.ctx, login, password); err != nil {
 				return err
 			}
 			fmt.Println("Logged in successfully.")
@@ -185,15 +194,15 @@ func cmdLogin() *cobra.Command {
 	return cmd
 }
 
-func cmdLogout() *cobra.Command {
+func (a *App) cmdLogout() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
 		Short: "Sign out and clear local tokens",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
-			if err := goph.Logout(ctx); err != nil {
+			if err := a.goph.Logout(a.ctx); err != nil {
 				return err
 			}
 			fmt.Println("Logged out.")
@@ -202,7 +211,7 @@ func cmdLogout() *cobra.Command {
 	}
 }
 
-func cmdAdd() *cobra.Command {
+func (a *App) cmdAdd() *cobra.Command {
 	var typ, comment, login, text, file, cardNumber, cardExpiry, cardHolder string
 
 	cmd := &cobra.Command{
@@ -214,7 +223,7 @@ func cmdAdd() *cobra.Command {
   binary   — file (path via --file)
   card     — bank card (CVV prompted securely)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
 
@@ -224,17 +233,17 @@ func cmdAdd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return addLogin(login, password, comment)
+				return a.addLogin(login, password, comment)
 			case "text":
-				return addText(text, comment)
+				return a.addText(text, comment)
 			case "binary":
-				return addBinary(file, comment)
+				return a.addBinary(file, comment)
 			case "card":
 				cvv, err := term.ReadPassword("CVV: ")
 				if err != nil {
 					return err
 				}
-				return addCard(cardNumber, cardExpiry, cvv, cardHolder, comment)
+				return a.addCard(cardNumber, cardExpiry, cvv, cardHolder, comment)
 			default:
 				return fmt.Errorf("unknown type: %s (use login, text, binary, card)", typ)
 			}
@@ -251,9 +260,9 @@ func cmdAdd() *cobra.Command {
 	return cmd
 }
 
-func addLogin(login, password, comment string) error {
+func (a *App) addLogin(login, password, comment string) error {
 	p := &model.LoginPasswordPayload{Login: login, Password: password}
-	sec, err := goph.CreateSecret(ctx, model.SecretTypeLoginPassword, p, nil, comment)
+	sec, err := a.goph.CreateSecret(a.ctx, model.SecretTypeLoginPassword, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -261,9 +270,9 @@ func addLogin(login, password, comment string) error {
 	return nil
 }
 
-func addText(text, comment string) error {
+func (a *App) addText(text, comment string) error {
 	p := &model.TextPayload{Text: text}
-	sec, err := goph.CreateSecret(ctx, model.SecretTypeText, p, nil, comment)
+	sec, err := a.goph.CreateSecret(a.ctx, model.SecretTypeText, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -271,7 +280,7 @@ func addText(text, comment string) error {
 	return nil
 }
 
-func addBinary(file, comment string) error {
+func (a *App) addBinary(file, comment string) error {
 	// Fail fast on oversized files BEFORE reading them into memory.
 	if err := checkFileSize(file); err != nil {
 		return err
@@ -281,7 +290,7 @@ func addBinary(file, comment string) error {
 		return fmt.Errorf("read file: %w", err)
 	}
 	p := &model.BinaryPayload{Data: data, FileName: filepath.Base(file)}
-	sec, err := goph.CreateSecret(ctx, model.SecretTypeBinary, p, nil, comment)
+	sec, err := a.goph.CreateSecret(a.ctx, model.SecretTypeBinary, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -302,14 +311,14 @@ func checkFileSize(path string) error {
 	return nil
 }
 
-func addCard(number, expiry, cvv, holder, comment string) error {
+func (a *App) addCard(number, expiry, cvv, holder, comment string) error {
 	p := &model.BankCardPayload{
 		Number:     number,
 		Expiry:     expiry,
 		CVV:        cvv,
 		HolderName: holder,
 	}
-	sec, err := goph.CreateSecret(ctx, model.SecretTypeBankCard, p, nil, comment)
+	sec, err := a.goph.CreateSecret(a.ctx, model.SecretTypeBankCard, p, nil, comment)
 	if err != nil {
 		return err
 	}
@@ -317,15 +326,15 @@ func addCard(number, expiry, cvv, holder, comment string) error {
 	return nil
 }
 
-func cmdList() *cobra.Command {
+func (a *App) cmdList() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all secrets",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
-			secrets, err := goph.ListSecrets(ctx)
+			secrets, err := a.goph.ListSecrets(a.ctx)
 			if err != nil {
 				return err
 			}
@@ -343,21 +352,21 @@ func cmdList() *cobra.Command {
 	}
 }
 
-func cmdGet() *cobra.Command {
+func (a *App) cmdGet() *cobra.Command {
 	var id, output string
 
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Retrieve and decrypt a secret. Use --output to save binary/text to a file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
 			uid, err := uuid.Parse(id)
 			if err != nil {
 				return fmt.Errorf("invalid UUID: %w", err)
 			}
-			_, payload, meta, err := goph.GetSecret(ctx, uid)
+			_, payload, meta, err := a.goph.GetSecret(a.ctx, uid)
 			if err != nil {
 				return err
 			}
@@ -428,7 +437,7 @@ func printPayload(payload any) {
 	}
 }
 
-func cmdEdit() *cobra.Command {
+func (a *App) cmdEdit() *cobra.Command {
 	var id, comment, login, text, cardNumber, cardExpiry, cardHolder string
 	var expectedVersion int64
 
@@ -436,7 +445,7 @@ func cmdEdit() *cobra.Command {
 		Use:   "edit",
 		Short: "Edit an existing secret",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
 			uid, err := uuid.Parse(id)
@@ -445,7 +454,7 @@ func cmdEdit() *cobra.Command {
 			}
 
 			// Get existing to determine type.
-			sec, _, _, err := goph.GetSecret(ctx, uid)
+			sec, _, _, err := a.goph.GetSecret(a.ctx, uid)
 			if err != nil {
 				return err
 			}
@@ -473,7 +482,7 @@ func cmdEdit() *cobra.Command {
 				return fmt.Errorf("editing type %s is not yet supported via CLI", sec.Type)
 			}
 
-			newVersion, err := goph.UpdateSecret(ctx, uid, expectedVersion, payload, nil, comment)
+			newVersion, err := a.goph.UpdateSecret(a.ctx, uid, expectedVersion, payload, nil, comment)
 			if err != nil {
 				return err
 			}
@@ -493,21 +502,21 @@ func cmdEdit() *cobra.Command {
 	return cmd
 }
 
-func cmdRm() *cobra.Command {
+func (a *App) cmdRm() *cobra.Command {
 	var id string
 
 	cmd := &cobra.Command{
 		Use:   "rm",
 		Short: "Delete a secret",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
 			uid, err := uuid.Parse(id)
 			if err != nil {
 				return fmt.Errorf("invalid UUID: %w", err)
 			}
-			if err := goph.DeleteSecret(ctx, uid); err != nil {
+			if err := a.goph.DeleteSecret(a.ctx, uid); err != nil {
 				return err
 			}
 			fmt.Printf("Secret %s deleted.\n", uid)
@@ -519,15 +528,15 @@ func cmdRm() *cobra.Command {
 	return cmd
 }
 
-func cmdSync() *cobra.Command {
+func (a *App) cmdSync() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Synchronise secrets with the server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(); err != nil {
+			if err := a.requireAuth(); err != nil {
 				return err
 			}
-			secrets, err := goph.SyncAndDecrypt(ctx, nil, nil)
+			secrets, err := a.goph.SyncAndDecrypt(a.ctx, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -537,19 +546,19 @@ func cmdSync() *cobra.Command {
 	}
 }
 
-func cmdTui() *cobra.Command {
+func (a *App) cmdTui() *cobra.Command {
 	return &cobra.Command{
 		Use:   "tui",
 		Short: "Launch the interactive terminal UI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := connect(); err != nil {
+			if err := a.connect(); err != nil {
 				return err
 			}
-			if goph != nil {
-				defer goph.Close()
+			if a.goph != nil {
+				defer a.goph.Close()
 			}
 
-			app := tui.NewApp(goph)
+			app := tui.NewApp(a.goph)
 			p := tea.NewProgram(app, tea.WithAltScreen())
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("TUI error: %w", err)
@@ -559,7 +568,7 @@ func cmdTui() *cobra.Command {
 	}
 }
 
-func cmdVersion() *cobra.Command {
+func (a *App) cmdVersion() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
