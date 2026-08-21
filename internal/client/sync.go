@@ -40,11 +40,11 @@ func (c *GophKeeperClient) Sync(ctx context.Context, clientVersions map[string]i
 		ClientDeleted:  clientDeleted,
 	}).Build())
 	if err != nil {
-		c.status.setOnline(false)
+		c.applyStatusFromError(err)
 		return nil, fmt.Errorf("sync: %w", err)
 	}
 
-	c.status.setOnline(true)
+	c.applyStatusFromError(nil)
 
 	// Refresh the local cache with server state (encrypted blobs only).
 	if c.local != nil {

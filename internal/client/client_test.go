@@ -790,3 +790,63 @@ func TestClient_CreateSecret_RefusesOversizedPayload(t *testing.T) {
 		t.Errorf("server stored %d secrets, want 0", len(env.server.secrets))
 	}
 }
+
+func TestClient_StatusClassification(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	// Unauthenticated (expired token) — server responded → ONLINE.
+	env.client.applyStatusFromError(status.Error(codes.Unauthenticated, "token expired"))
+	if !env.client.IsOnline() {
+		t.Error("IsOnline() = false after Unauthenticated — server is reachable")
+	}
+
+	// Internal server error — server responded → ONLINE.
+	env.client.applyStatusFromError(status.Error(codes.Internal, "db error"))
+	if !env.client.IsOnline() {
+		t.Error("IsOnline() = false after Internal — server is reachable")
+	}
+
+	// Unavailable — network down → OFFLINE.
+	env.client.applyStatusFromError(status.Error(codes.Unavailable, "connection refused"))
+	if env.client.IsOnline() {
+		t.Error("IsOnline() = true after Unavailable — server is down")
+	}
+
+	// Success → ONLINE.
+	env.client.applyStatusFromError(nil)
+	if !env.client.IsOnline() {
+		t.Error("IsOnline() = false after success")
+	}
+
+	// DeadlineExceeded (caller-side timeout) — not a network outage,
+	// but transport-level timeouts also do not prove reachability;
+	// the status stays as previously recorded (online after success).
+	env.client.applyStatusFromError(status.Error(codes.DeadlineExceeded, "context deadline"))
+	if !env.client.IsOnline() {
+		t.Error("IsOnline() changed on DeadlineExceeded")
+	}
+}
+
+func TestClient_Probe_UnauthenticatedStaysOnline(t *testing.T) {
+	env := setupClientEnv(t)
+	defer env.stop()
+
+	if err := env.client.Register(context.Background(), "linda", "master-pass-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark the client online first (as if a successful probe ran).
+	env.client.applyStatusFromError(nil)
+	if !env.client.IsOnline() {
+		t.Fatal("precondition: client should be online")
+	}
+
+	// Force an auth failure: replace the access token with garbage.
+	// The fake server ignores tokens, so simulate the server's response
+	// through the classification logic directly.
+	env.client.applyStatusFromError(status.Error(codes.Unauthenticated, "invalid token"))
+	if !env.client.IsOnline() {
+		t.Error("probe-style auth error flipped the client to offline")
+	}
+}

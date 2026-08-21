@@ -42,6 +42,18 @@ func (s *OnlineStatus) setOnline(v bool) {
 	s.mu.Unlock()
 }
 
+// applyStatusFromError updates the online status from an RPC result.
+// Only network unavailability (codes.Unavailable) means the server is down.
+// Any other error — including codes.Unauthenticated (expired token) — means
+// the server responded, so the client is online.
+func (c *GophKeeperClient) applyStatusFromError(err error) {
+	if err != nil && isNetworkError(err) {
+		c.status.setOnline(false)
+		return
+	}
+	c.status.setOnline(true)
+}
+
 // StartConnectivityMonitor launches a background goroutine that periodically
 // syncs with the server. On success it refreshes the local cache (using the
 // cache's version map) and marks the client online; on failure it marks it
@@ -91,9 +103,12 @@ func (c *GophKeeperClient) probe() {
 
 	result, err := c.Sync(ctx, versions, nil)
 	if err != nil {
-		c.status.setOnline(false)
+		// Unavailable → offline; any other error (e.g. expired token) means
+		// the server responded and the client stays online.
+		c.applyStatusFromError(err)
 		return
 	}
+	c.applyStatusFromError(nil)
 
 	// Refresh cache with server state (encrypted blobs only — no DEK needed).
 	var upserts []*model.Secret
@@ -111,8 +126,6 @@ func (c *GophKeeperClient) probe() {
 			_ = c.local.SaveSecret(sec)
 		}
 	}
-
-	c.status.setOnline(true)
 }
 
 // protoToModelSecret converts a proto Secret to the domain model.

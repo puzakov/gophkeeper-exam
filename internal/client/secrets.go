@@ -49,11 +49,11 @@ func (c *GophKeeperClient) CreateSecret(ctx context.Context, st model.SecretType
 		Comment:           comment,
 	}).Build())
 	if err != nil {
-		c.status.setOnline(false)
+		c.applyStatusFromError(err)
 		return nil, fmt.Errorf("create secret: %w", err)
 	}
 
-	c.status.setOnline(true)
+	c.applyStatusFromError(nil)
 	id, _ := uuid.Parse(resp.GetId())
 	sec := &model.Secret{
 		ID:                id,
@@ -229,11 +229,11 @@ func (c *GophKeeperClient) UpdateSecret(ctx context.Context, secretID uuid.UUID,
 		Comment:           comment,
 	}).Build())
 	if err != nil {
-		c.status.setOnline(false)
+		c.applyStatusFromError(err)
 		return 0, fmt.Errorf("update secret: %w", err)
 	}
 
-	c.status.setOnline(true)
+	c.applyStatusFromError(nil)
 	newVersion := resp.GetVersion()
 
 	// Update the local cache.
@@ -257,11 +257,11 @@ func (c *GophKeeperClient) DeleteSecret(ctx context.Context, secretID uuid.UUID)
 		Id: secretID.String(),
 	}).Build())
 	if err != nil {
-		c.status.setOnline(false)
+		c.applyStatusFromError(err)
 		return fmt.Errorf("delete secret: %w", err)
 	}
 
-	c.status.setOnline(true)
+	c.applyStatusFromError(nil)
 
 	// Update the local cache (tombstone).
 	if c.local != nil {
