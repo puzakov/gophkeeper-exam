@@ -1,0 +1,29 @@
+# Binaries
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage.out
+
+# IDE
+.idea/
+
+# Database
+*.db
+*.sqlite
+
+# Certs
+*.crt
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+gophkeeper-server
+gophkeeper-client
