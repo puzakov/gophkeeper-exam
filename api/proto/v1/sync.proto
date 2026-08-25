@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package gophkeeper.v1;
+
+option go_package = "github.com/puzakov/gophkeeper-exam/internal/proto/v1;protov1";
+
+import "secret.proto";
+
+// SyncVersion holds a client's knowledge about a secret's latest version.
+message SyncVersion {
+  string secret_id = 1;
+  int64  version = 2;
+}
+
+// SyncService handles bidirectional secret synchronisation between
+// multiple authorised clients of the same user.
+service SyncService {
+  // Client sends its local version map; server returns everything that differs.
+  rpc SyncSecrets(SyncSecretsRequest) returns (SyncSecretsResponse);
+}
+
+message SyncSecretsRequest {
+  repeated SyncVersion client_versions = 1;  // secrets the client already has
+  repeated string client_deleted = 2;         // ids client deleted locally, not yet acked
+}
+
+message SyncSecretsResponse {
+  repeated Secret updated_secrets = 1;        // server version > client version
+  repeated string deleted_ids = 2;            // server tombstone newer than client version
+  repeated SyncVersion conflicts = 3;         // client version > server → re-push
+  repeated SyncVersion server_versions = 4;   // full current version map for reconciliation
+}
